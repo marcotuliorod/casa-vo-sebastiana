@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { toggleHorarioGrade, ativarNovoSlot } from '@/lib/actions/admin'
 import { cn } from '@/lib/utils/cn'
 import type { GradeHorario } from '@/types/database'
@@ -44,6 +45,7 @@ interface GradeHorariosEditorProps {
 }
 
 export function GradeHorariosEditor({ grade }: GradeHorariosEditorProps) {
+  const router = useRouter()
   const [turno, setTurno] = useState<Turno>('todos')
   const [erro, setErro] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -69,8 +71,9 @@ export function GradeHorariosEditor({ grade }: GradeHorariosEditorProps) {
         await toggleHorarioGrade(existente.id, !existente.ativo)
       } else {
         const resultado = await ativarNovoSlot(dia, slot.inicio, slot.fim)
-        if (resultado.erro) setErro(resultado.erro) // BUG-06: exibe erro ao usuário
+        if (resultado.erro) { setErro(resultado.erro); return }
       }
+      router.refresh()
     })
   }
 

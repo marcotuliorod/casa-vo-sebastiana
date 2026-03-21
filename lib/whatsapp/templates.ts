@@ -93,6 +93,33 @@ export function mensagemCancelamentoAdmin(info: InfoNovoAgendamentoAdmin): strin
   ].join('\n')
 }
 
+// ─── Notificação Médium — Atribuição ──────────────────────────
+
+interface InfoAtribuicaoMedium {
+  nomeMedium: string
+  nomeCliente: string
+  dataAgendada: string  // 'YYYY-MM-DD'
+  horaInicio: string
+  horaFim: string
+}
+
+export function mensagemAtribuicaoMedium(info: InfoAtribuicaoMedium): string {
+  const data = parseISO(info.dataAgendada)
+  const dataFormatada = format(data, "EEEE, d 'de' MMMM", { locale: ptBR })
+
+  return [
+    `Olá, ${info.nomeMedium}! ✨`,
+    ``,
+    `Você tem um novo atendimento na *Casa de Vó Sebastiana*:`,
+    ``,
+    `👤 ${info.nomeCliente}`,
+    `🗓️ ${dataFormatada}`,
+    `🕐 ${info.horaInicio} — ${info.horaFim}`,
+    ``,
+    `Que a energia guie seu trabalho! 🙏`,
+  ].join('\n')
+}
+
 // ─── Cancelamento ─────────────────────────────────────────────
 
 export function mensagemCancelamento(info: InfoAgendamento): string {

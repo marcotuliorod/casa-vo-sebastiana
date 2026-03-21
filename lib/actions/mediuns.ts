@@ -48,6 +48,8 @@ export async function assumirAgendamento(
   if (error) return { erro: error.message }
 
   revalidatePath(`/mediuns/${mediumToken}`)
+  revalidatePath('/admin/agendamentos') // GAP-05: sincroniza admin quando médium assume
+  revalidatePath('/admin')
   return {}
 }
 
@@ -80,5 +82,7 @@ export async function liberarAgendamento(
   if (error) return { erro: error.message }
 
   revalidatePath(`/mediuns/${mediumToken}`)
+  revalidatePath('/admin/agendamentos') // GAP-05: sincroniza admin quando médium libera
+  revalidatePath('/admin')
   return {}
 }

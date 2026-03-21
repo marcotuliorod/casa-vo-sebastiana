@@ -5,6 +5,9 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/server'
+import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
+import { mensagemAtribuicaoMedium, mensagemCancelamento } from '@/lib/whatsapp/templates'
+import { normalizarTelefone } from '@/lib/utils/phone'
 import type { AppointmentStatus } from '@/types/database'
 
 // Atualizar status de um agendamento
@@ -20,6 +23,35 @@ export async function atualizarStatusAgendamento(
     .eq('id', id)
 
   if (error) return { erro: error.message }
+
+  // GAP-01: notificar consulente por WhatsApp quando admin cancela
+  if (novoStatus === 'cancelado') {
+    try {
+      const { data: ag } = await supabase
+        .from('agendamentos')
+        .select('data_agendada, hora_inicio, hora_fim, token_publico, clientes(nome, telefone)')
+        .eq('id', id)
+        .single()
+
+      if (ag) {
+        const provedor = getProvedorWhatsApp()
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
+        const agTyped = ag as { data_agendada: string; hora_inicio: string; hora_fim: string; token_publico: string; clientes: { nome: string; telefone: string } }
+        await provedor.enviarMensagem({
+          para: normalizarTelefone(agTyped.clientes.telefone),
+          corpo: mensagemCancelamento({
+            nomeCliente: agTyped.clientes.nome,
+            dataAgendada: agTyped.data_agendada,
+            horaInicio: agTyped.hora_inicio,
+            tokenPublico: agTyped.token_publico,
+            baseUrl,
+          }),
+        })
+      }
+    } catch {
+      // WhatsApp falhou — não impede o cancelamento
+    }
+  }
 
   revalidatePath('/admin/agendamentos')
   revalidatePath('/admin')
@@ -63,6 +95,7 @@ export async function bloquearData(
   }
 
   revalidatePath('/admin/disponibilidade')
+  revalidatePath('/agendar') // GAP-03: invalida calendário público ao bloquear data
   return {}
 }
 
@@ -77,6 +110,7 @@ export async function desbloquearData(id: string): Promise<{ erro?: string }> {
   if (error) return { erro: error.message }
 
   revalidatePath('/admin/disponibilidade')
+  revalidatePath('/agendar') // GAP-03: invalida calendário público ao desbloquear data
   return {}
 }
 
@@ -133,12 +167,10 @@ export async function ativarNovoSlot(
 ): Promise<{ erro?: string }> {
   const supabase = createAdminClient()
 
-  const { error } = await supabase.from('grade_horarios').insert({
-    dia_semana: diaSemana,
-    hora_inicio: horaInicio,
-    hora_fim: horaFim,
-    ativo: true,
-  })
+  const { error } = await supabase.from('grade_horarios').upsert(
+    { dia_semana: diaSemana, hora_inicio: horaInicio, hora_fim: horaFim, ativo: true },
+    { onConflict: 'dia_semana,hora_inicio' }
+  )
 
   if (error) return { erro: error.message } // BUG-06: propaga erro ao invés de falhar silenciosamente
 
@@ -204,6 +236,43 @@ export async function atribuirMedium(
     .eq('id', agendamentoId)
 
   if (error) return { erro: error.message }
+
+  // US-27: notificar médium via WhatsApp ao ser atribuído
+  if (mediumId) {
+    try {
+      const [{ data: ag }, { data: med }] = await Promise.all([
+        supabase
+          .from('agendamentos')
+          .select('data_agendada, hora_inicio, hora_fim, clientes(nome)')
+          .eq('id', agendamentoId)
+          .single(),
+        supabase
+          .from('mediuns')
+          .select('nome, telefone')
+          .eq('id', mediumId)
+          .single(),
+      ])
+
+      const telefone = (med as { nome: string; telefone: string | null } | null)?.telefone
+      if (ag && telefone) {
+        const provedor = getProvedorWhatsApp()
+        const telefoneNormalizado = normalizarTelefone(telefone)
+        const agTyped = ag as { data_agendada: string; hora_inicio: string; hora_fim: string; clientes: { nome: string } }
+        await provedor.enviarMensagem({
+          para: telefoneNormalizado,
+          corpo: mensagemAtribuicaoMedium({
+            nomeMedium: (med as { nome: string }).nome,
+            nomeCliente: agTyped.clientes.nome,
+            dataAgendada: agTyped.data_agendada,
+            horaInicio: agTyped.hora_inicio,
+            horaFim: agTyped.hora_fim,
+          }),
+        })
+      }
+    } catch {
+      // WhatsApp falhou — não impede a atribuição
+    }
+  }
 
   revalidatePath('/admin/agendamentos')
   revalidatePath('/admin') // BUG-07: sincroniza Dashboard após atribuição de médium

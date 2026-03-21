@@ -87,6 +87,7 @@ function ExportarCSVButton({ agendamentos, mediuns }: AppointmentTableProps) {
 
 export function AppointmentTable({ agendamentos, mediuns = [] }: AppointmentTableProps) {
   const [atualizando, setAtualizando] = useState<string | null>(null)
+  const [confirmandoCancelamento, setConfirmandoCancelamento] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 
   const handleStatus = (id: string, novoStatus: AppointmentStatus) => {
@@ -173,15 +174,36 @@ export function AppointmentTable({ agendamentos, mediuns = [] }: AppointmentTabl
                       </Button>
                     )}
                     {(ag.status === 'pendente' || ag.status === 'confirmado') && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-red-700 border-red-200 hover:bg-red-50"
-                        onClick={() => handleStatus(ag.id, 'cancelado')}
-                      >
-                        <X className="h-3 w-3 mr-1" />
-                        Cancelar
-                      </Button>
+                      confirmandoCancelamento === ag.id ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-500 mr-1 whitespace-nowrap">Confirmar?</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-700 border-red-200 hover:bg-red-50"
+                            onClick={() => { handleStatus(ag.id, 'cancelado'); setConfirmandoCancelamento(null) }}
+                          >
+                            Sim
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setConfirmandoCancelamento(null)}
+                          >
+                            Não
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-700 border-red-200 hover:bg-red-50"
+                          onClick={() => setConfirmandoCancelamento(ag.id)}
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Cancelar
+                        </Button>
+                      )
                     )}
                     {ag.status === 'confirmado' && (
                       <Button
