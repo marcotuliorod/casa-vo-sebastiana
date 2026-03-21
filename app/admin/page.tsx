@@ -1,4 +1,5 @@
 // Dashboard principal do painel administrativo
+import { formatInTimeZone } from 'date-fns-tz'
 import { StatCard } from '@/components/admin/StatCard'
 import { AppointmentTable } from '@/components/admin/AppointmentTable'
 import { getEstatisticas } from '@/lib/queries/appointments'
@@ -12,7 +13,7 @@ export const metadata = {
 export default async function AdminDashboard() {
   const [stats, agendamentosHoje] = await Promise.all([
     getEstatisticas(),
-    listarAgendamentos({ data: new Date().toISOString().split('T')[0] }),
+    listarAgendamentos({ data: formatInTimeZone(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd') }),
   ])
 
   return (

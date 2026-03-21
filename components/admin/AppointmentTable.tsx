@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { StatusBadge } from './StatusBadge'
 import { Button } from '@/components/ui/button'
@@ -24,11 +25,13 @@ function MediumSelect({
   mediumId: string | null
   mediuns: Medium[]
 }) {
+  const router = useRouter()
   const [, startTransition] = useTransition()
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     startTransition(async () => {
       await atribuirMedium(agendamentoId, e.target.value)
+      router.refresh()
     })
   }
 
@@ -86,6 +89,7 @@ function ExportarCSVButton({ agendamentos, mediuns }: AppointmentTableProps) {
 }
 
 export function AppointmentTable({ agendamentos, mediuns = [] }: AppointmentTableProps) {
+  const router = useRouter()
   const [atualizando, setAtualizando] = useState<string | null>(null)
   const [confirmandoCancelamento, setConfirmandoCancelamento] = useState<string | null>(null)
   const [, startTransition] = useTransition()
@@ -95,6 +99,7 @@ export function AppointmentTable({ agendamentos, mediuns = [] }: AppointmentTabl
     startTransition(async () => {
       await atualizarStatusAgendamento(id, novoStatus)
       setAtualizando(null)
+      router.refresh()
     })
   }
 
@@ -134,7 +139,7 @@ export function AppointmentTable({ agendamentos, mediuns = [] }: AppointmentTabl
               <td className="px-4 py-3">
                 <p className="font-medium">{formatarData(ag.data_agendada)}</p>
                 <p className="text-xs text-gray-500">
-                  {ag.hora_inicio} — {ag.hora_fim}
+                  {ag.hora_inicio.slice(0, 5)} — {ag.hora_fim.slice(0, 5)}
                 </p>
               </td>
               <td className="px-4 py-3">
