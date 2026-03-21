@@ -1,6 +1,6 @@
 // Queries de agendamentos para o painel admin e área pública
 
-import { formatInTimeZone } from 'date-fns-tz'
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/server'
 import type { AgendamentoComCliente, AppointmentStatus } from '@/types/database'
 
@@ -48,23 +48,18 @@ export async function listarAgendamentos(filtros?: {
     query = query.eq('status', filtros.status)
   }
 
+  if (filtros?.busca) {
+    query = query.or(
+      `nome.ilike.%${filtros.busca}%,telefone.ilike.%${filtros.busca}%`,
+      { foreignTable: 'clientes' }
+    )
+  }
+
   const { data, error } = await query
 
   if (error) return []
 
-  let resultados = data as AgendamentoComCliente[]
-
-  // Filtro de busca por nome ou telefone do cliente
-  if (filtros?.busca) {
-    const termo = filtros.busca.toLowerCase()
-    resultados = resultados.filter(
-      (a) =>
-        a.clientes.nome.toLowerCase().includes(termo) ||
-        a.clientes.telefone.includes(termo)
-    )
-  }
-
-  return resultados
+  return data as AgendamentoComCliente[]
 }
 
 // Estatísticas para o dashboard
@@ -91,7 +86,10 @@ export async function getEstatisticas() {
     supabase
       .from('agendamentos')
       .select('*', { count: 'exact', head: true })
-      .gte('criado_em', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+      .gte('criado_em', fromZonedTime(
+        `${formatInTimeZone(agora, TZ, 'yyyy-MM')}-01T00:00:00`,
+        TZ
+      ).toISOString())
       .not('status', 'eq', 'cancelado'),
 
     supabase

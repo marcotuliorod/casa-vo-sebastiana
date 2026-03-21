@@ -36,7 +36,7 @@ export function TimeSlotGrid({ slots, data, slotSelecionado }: TimeSlotGridProps
             key={slot.hora_inicio}
             href={href}
             className={cn(
-              'flex flex-col items-center justify-center rounded-xl border-2 p-4 text-center transition-all hover:shadow-md active:scale-95',
+              'flex min-h-12 flex-col items-center justify-center rounded-xl border-2 p-4 text-center transition-all hover:shadow-md active:scale-95',
               isSelecionado
                 ? 'border-purple-600 bg-purple-50 text-purple-700 shadow-md'
                 : 'border-gray-200 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50'

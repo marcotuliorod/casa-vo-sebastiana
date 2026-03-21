@@ -26,7 +26,7 @@ export default function Home() {
           href="/agendar"
           className="inline-block bg-purple-600 text-white px-8 py-3 rounded-xl font-semibold hover:bg-purple-700 transition-colors shadow-sm"
         >
-          Fazer meu agendamento
+          Agendar atendimento
         </Link>
 
         <Link

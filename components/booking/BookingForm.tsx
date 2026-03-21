@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { criarAgendamento, type EstadoFormAgendamento } from '@/lib/actions/booking'
 import { formatarDataExtenso } from '@/lib/utils/date'
+import { cn } from '@/lib/utils/cn'
 import { Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -16,7 +18,42 @@ interface BookingFormProps {
   horaFim: string
 }
 
-// Botão separado para usar useFormStatus corretamente dentro do form
+function usePhoneMask() {
+  const [value, setValue] = useState('')
+
+  const handleInput = (e: React.FormEvent<HTMLInputElement>) => {
+    let v = e.currentTarget.value.replace(/\D/g, '')
+    if (v.length > 11) v = v.slice(0, 11)
+    let formatted = v
+    if (v.length === 11) {
+      formatted = `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`
+    } else if (v.length === 10) {
+      formatted = `(${v.slice(0, 2)}) ${v.slice(2, 6)}-${v.slice(6)}`
+    } else if (v.length > 6) {
+      formatted = `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`
+    } else if (v.length > 2) {
+      formatted = `(${v.slice(0, 2)}) ${v.slice(2)}`
+    } else if (v.length > 0) {
+      formatted = `(${v}`
+    }
+    setValue(formatted)
+  }
+
+  return [value, handleInput] as const
+}
+
+function AppointmentSummary({ data, horaInicio, horaFim }: BookingFormProps) {
+  return (
+    <div className="rounded-xl bg-purple-50 p-4 text-center border border-purple-100">
+      <p className="text-sm text-purple-600 font-medium">Você está agendando para:</p>
+      <p className="text-lg font-bold text-purple-900 capitalize">{formatarDataExtenso(data)}</p>
+      <p className="text-purple-700">
+        {horaInicio} — {horaFim}
+      </p>
+    </div>
+  )
+}
+
 function SubmitButton() {
   const { pending } = useFormStatus()
   return (
@@ -43,24 +80,19 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
     criarAgendamento,
     null
   )
+  const [nome, setNome] = useState('')
+  const [telefone, handleTelefoneInput] = usePhoneMask()
+  const [email, setEmail] = useState('')
+  const [notas, setNotas] = useState('')
 
   return (
     <form action={action} className="space-y-5">
-      {/* Campos ocultos com os dados do slot */}
       <input type="hidden" name="data" value={data} />
       <input type="hidden" name="hora_inicio" value={horaInicio} />
       <input type="hidden" name="hora_fim" value={horaFim} />
 
-      {/* Resumo do horário escolhido */}
-      <div className="rounded-xl bg-purple-50 p-4 text-center border border-purple-100">
-        <p className="text-sm text-purple-600 font-medium">Você está agendando para:</p>
-        <p className="text-lg font-bold text-purple-900 capitalize">{formatarDataExtenso(data)}</p>
-        <p className="text-purple-700">
-          {horaInicio} — {horaFim}
-        </p>
-      </div>
+      <AppointmentSummary data={data} horaInicio={horaInicio} horaFim={horaFim} />
 
-      {/* Erro geral */}
       {estado?.erro && !estado.campo && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700 space-y-2">
           <p>{estado.erro}</p>
@@ -75,7 +107,6 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
         </div>
       )}
 
-      {/* Nome */}
       <div className="space-y-1.5">
         <Label htmlFor="nome">Nome completo *</Label>
         <Input
@@ -84,14 +115,15 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
           placeholder="Seu nome completo"
           required
           autoComplete="name"
-          className={estado?.campo === 'nome' ? 'border-red-400' : ''}
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          className={cn(estado?.campo === 'nome' && 'border-red-400')}
         />
         {estado?.campo === 'nome' && (
           <p className="text-xs text-red-600">{estado.erro}</p>
         )}
       </div>
 
-      {/* Telefone */}
       <div className="space-y-1.5">
         <Label htmlFor="telefone">
           WhatsApp *{' '}
@@ -105,25 +137,9 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
           required
           autoComplete="tel"
           maxLength={15}
-          onInput={(e) => {
-            const input = e.currentTarget
-            let v = input.value.replace(/\D/g, '')
-            if (v.length > 11) v = v.slice(0, 11)
-            if (v.length === 11) {
-              // Celular: (11) 99999-9999
-              input.value = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`
-            } else if (v.length === 10) {
-              // Fixo: (11) 3333-4444
-              input.value = `(${v.slice(0,2)}) ${v.slice(2,6)}-${v.slice(6)}`
-            } else if (v.length > 6) {
-              input.value = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`
-            } else if (v.length > 2) {
-              input.value = `(${v.slice(0,2)}) ${v.slice(2)}`
-            } else if (v.length > 0) {
-              input.value = `(${v}`
-            }
-          }}
-          className={estado?.campo === 'telefone' ? 'border-red-400' : ''}
+          value={telefone}
+          onInput={handleTelefoneInput}
+          className={cn(estado?.campo === 'telefone' && 'border-red-400')}
         />
         {estado?.campo === 'telefone' && (
           <p className="text-xs text-red-600">
@@ -134,7 +150,6 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
         )}
       </div>
 
-      {/* Email */}
       <div className="space-y-1.5">
         <Label htmlFor="email">
           Email{' '}
@@ -146,10 +161,11 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
           type="email"
           placeholder="seu@email.com"
           autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
         />
       </div>
 
-      {/* Notas */}
       <div className="space-y-1.5">
         <Label htmlFor="notas">
           Observações{' '}
@@ -161,6 +177,8 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
           placeholder="Algo que queira nos informar antes do atendimento..."
           rows={3}
           maxLength={500}
+          value={notas}
+          onChange={(e) => setNotas(e.target.value)}
         />
       </div>
 

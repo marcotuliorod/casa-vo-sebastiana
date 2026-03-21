@@ -20,7 +20,7 @@ export function ProgressSteps({ passoAtual }: ProgressStepsProps) {
           const atual = passo.numero === passoAtual
 
           return (
-            <li key={passo.numero} className="flex items-center">
+            <li key={passo.numero} className="flex items-center" aria-current={atual ? 'step' : undefined}>
               {/* Círculo do passo */}
               <div className="flex flex-col items-center">
                 <div

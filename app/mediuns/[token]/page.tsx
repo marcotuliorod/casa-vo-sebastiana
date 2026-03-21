@@ -24,7 +24,7 @@ function CardAgendamento({
           {formatarDataExtenso(ag.data_agendada)}
         </p>
         <p className="text-sm text-purple-700 font-medium">
-          {ag.hora_inicio} — {ag.hora_fim}
+          {ag.hora_inicio.slice(0, 5)} — {ag.hora_fim.slice(0, 5)}
         </p>
         <p className="text-sm text-gray-600">{ag.clientes.nome}</p>
         <div className="flex items-center gap-2">

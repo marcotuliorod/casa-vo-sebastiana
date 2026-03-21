@@ -1,8 +1,11 @@
 // Queries de disponibilidade — calcula slots disponíveis para uma data
 
+import { formatInTimeZone } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/server'
 import { diaDaSemana } from '@/lib/utils/date'
 import type { SlotDisponivel, GradeHorario, DataBloqueada, Agendamento } from '@/types/database'
+
+const FUSO_BR = 'America/Sao_Paulo'
 
 interface ResultadoDisponibilidade {
   slots: SlotDisponivel[]
@@ -69,7 +72,7 @@ export async function getSlotsDisponiveis(data: string): Promise<ResultadoDispon
 // Usado pelo calendário para desabilitar visualmente as datas bloqueadas
 export async function getDatasBlockeadas(): Promise<string[]> {
   const supabase = createAdminClient()
-  const hoje = new Date().toISOString().split('T')[0]
+  const hoje = formatInTimeZone(new Date(), FUSO_BR, 'yyyy-MM-dd') // BUG-B: usa fuso BR, não UTC
 
   const { data, error } = await supabase
     .from('datas_bloqueadas')
@@ -184,12 +187,12 @@ export async function verificarSlotEspecifico(
 export async function getDatasDisponiveis(ano: number, mes: number): Promise<string[]> {
   const primeiroDia = new Date(ano, mes - 1, 1)
   const ultimoDia = new Date(ano, mes, 0)
-  const hoje = new Date()
-  hoje.setHours(0, 0, 0, 0)
+  const hojeStr = formatInTimeZone(new Date(), FUSO_BR, 'yyyy-MM-dd') // BUG-C: usa fuso BR, não UTC
 
   const datas: string[] = []
   for (let d = new Date(primeiroDia); d <= ultimoDia; d.setDate(d.getDate() + 1)) {
-    if (d >= hoje) datas.push(d.toISOString().split('T')[0])
+    const dataStr = d.toISOString().split('T')[0]
+    if (dataStr >= hojeStr) datas.push(dataStr)
   }
 
   return getDatasComSlotsDisponiveis(datas)

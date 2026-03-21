@@ -33,7 +33,7 @@ export default function CancelarPage({ params }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-red-50 via-background to-background">
+    <div className="min-h-screen bg-gradient-to-b from-purple-50 via-background to-background">
       <div className="mx-auto max-w-md px-4 py-10">
         <div className="text-center mb-8">
           <Logo size="sm" />

@@ -4,17 +4,27 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient, createServerSessionClient } from '@/lib/supabase/server'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
 import { mensagemAtribuicaoMedium, mensagemCancelamento } from '@/lib/whatsapp/templates'
 import { normalizarTelefone } from '@/lib/utils/phone'
 import type { AppointmentStatus } from '@/types/database'
+
+// Verifica se há um usuário autenticado — chamado no topo de cada action admin
+async function verificarAdmin(): Promise<string | null> {
+  const supabase = await createServerSessionClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  return user ? null : 'Não autorizado.'
+}
 
 // Atualizar status de um agendamento
 export async function atualizarStatusAgendamento(
   id: string,
   novoStatus: AppointmentStatus
 ): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
   const supabase = createAdminClient()
 
   const { error } = await supabase
@@ -70,6 +80,9 @@ export async function bloquearData(
   _estado: { erro?: string } | null,
   formData: FormData
 ): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
   const dados = Object.fromEntries(formData.entries())
   const resultado = schemaBloqueio.safeParse(dados)
 
@@ -100,6 +113,9 @@ export async function bloquearData(
 }
 
 export async function desbloquearData(id: string): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
   const supabase = createAdminClient()
 
   const { error } = await supabase
@@ -119,27 +135,39 @@ export async function atualizarGradeHorarios(
   diaSemana: number,
   horarios: Array<{ hora_inicio: string; hora_fim: string; ativo: boolean }>
 ): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
   const supabase = createAdminClient()
 
-  // Deletar todos os horários do dia e reinserir
-  const { error: erroDelete } = await supabase
-    .from('grade_horarios')
-    .delete()
-    .eq('dia_semana', diaSemana)
-
-  if (erroDelete) return { erro: erroDelete.message }
-
-  if (horarios.length > 0) {
-    const { error: erroInsert } = await supabase.from('grade_horarios').insert(
+  if (horarios.length === 0) {
+    // Remover todos os slots do dia
+    const { error } = await supabase
+      .from('grade_horarios')
+      .delete()
+      .eq('dia_semana', diaSemana)
+    if (error) return { erro: error.message }
+  } else {
+    // 1. Upsert dos slots novos/atualizados (sem risco de perda)
+    const { error: erroUpsert } = await supabase.from('grade_horarios').upsert(
       horarios.map((h) => ({
         dia_semana: diaSemana,
         hora_inicio: h.hora_inicio,
         hora_fim: h.hora_fim,
         ativo: h.ativo,
-      }))
+      })),
+      { onConflict: 'dia_semana,hora_inicio' }
     )
+    if (erroUpsert) return { erro: erroUpsert.message }
 
-    if (erroInsert) return { erro: erroInsert.message }
+    // 2. Remover slots que não estão mais na lista (somente após upsert bem-sucedido)
+    const horasNovas = horarios.map((h) => h.hora_inicio)
+    const { error: erroDelete } = await supabase
+      .from('grade_horarios')
+      .delete()
+      .eq('dia_semana', diaSemana)
+      .not('hora_inicio', 'in', `(${horasNovas.join(',')})`)
+    if (erroDelete) return { erro: erroDelete.message }
   }
 
   revalidatePath('/admin/disponibilidade')
@@ -148,16 +176,22 @@ export async function atualizarGradeHorarios(
 }
 
 // Toggle ativo/inativo de um horário da grade
-export async function toggleHorarioGrade(id: string, ativo: boolean) {
+export async function toggleHorarioGrade(id: string, ativo: boolean): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
   const supabase = createAdminClient()
 
-  await supabase
+  const { error } = await supabase
     .from('grade_horarios')
     .update({ ativo })
     .eq('id', id)
 
+  if (error) return { erro: error.message }
+
   revalidatePath('/admin/disponibilidade')
   revalidatePath('/agendar') // BUG-05: invalida calendário público
+  return {}
 }
 
 // Inserir novo slot na grade (ainda não existia no banco)
@@ -166,6 +200,9 @@ export async function ativarNovoSlot(
   horaInicio: string,
   horaFim: string
 ): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
   const supabase = createAdminClient()
 
   const { error } = await supabase.from('grade_horarios').upsert(
@@ -192,6 +229,9 @@ export async function criarMedium(
   _estado: { erro?: string } | null,
   formData: FormData
 ): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
   const dados = Object.fromEntries(formData.entries())
   const resultado = schemaMedium.safeParse(dados)
 
@@ -214,21 +254,30 @@ export async function criarMedium(
   return {}
 }
 
-export async function toggleMediumAtivo(id: string, ativo: boolean): Promise<void> {
+export async function toggleMediumAtivo(id: string, ativo: boolean): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
   const supabase = createAdminClient()
 
-  await supabase
+  const { error } = await supabase
     .from('mediuns')
     .update({ ativo })
     .eq('id', id)
 
+  if (error) return { erro: error.message }
+
   revalidatePath('/admin/mediuns')
+  return {}
 }
 
 export async function atribuirMedium(
   agendamentoId: string,
   mediumId: string
 ): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
   const supabase = createAdminClient()
 
   const { error } = await supabase

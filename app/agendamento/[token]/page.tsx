@@ -37,7 +37,17 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
           <Logo size="sm" />
         </div>
 
-        {/* Card de sucesso para agendamentos novos */}
+        {/* Banner: aguardando confirmação */}
+        {agendamento.status === 'pendente' && (
+          <div className="mb-6 rounded-xl bg-amber-50 border border-amber-200 p-4 text-center">
+            <p className="font-semibold text-amber-800">🕐 Agendamento recebido!</p>
+            <p className="text-sm text-amber-600 mt-1">
+              Aguardando confirmação da Casa. Você receberá uma mensagem no WhatsApp em breve.
+            </p>
+          </div>
+        )}
+
+        {/* Card de sucesso para agendamentos confirmados */}
         {agendamento.status === 'confirmado' && (
           <div className="mb-6 rounded-xl bg-green-50 border border-green-200 p-4 text-center">
             <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto mb-2" />
@@ -117,6 +127,12 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
           {agendamento.status === 'confirmado' && (
             <Button asChild variant="outline" className="w-full">
               <Link href="/agendar">Fazer outro agendamento →</Link>
+            </Button>
+          )}
+
+          {agendamento.status === 'realizado' && (
+            <Button asChild className="w-full bg-purple-700 hover:bg-purple-800">
+              <Link href="/agendar">Reagendar ✨</Link>
             </Button>
           )}
 

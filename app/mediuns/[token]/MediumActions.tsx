@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { assumirAgendamento, liberarAgendamento } from '@/lib/actions/mediuns'
 import { Button } from '@/components/ui/button'
 import { Loader2 } from 'lucide-react'
@@ -12,6 +13,7 @@ interface MediumActionsProps {
 }
 
 export function MediumActions({ agendamentoId, mediumToken, tipo }: MediumActionsProps) {
+  const router = useRouter()
   const [erro, setErro] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -23,7 +25,11 @@ export function MediumActions({ agendamentoId, mediumToken, tipo }: MediumAction
           ? await assumirAgendamento(agendamentoId, mediumToken)
           : await liberarAgendamento(agendamentoId, mediumToken)
 
-      if (resultado.erro) setErro(resultado.erro)
+      if (resultado.erro) {
+        setErro(resultado.erro)
+      } else {
+        router.refresh()
+      }
     })
   }
 

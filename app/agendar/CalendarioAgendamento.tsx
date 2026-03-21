@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
 import { format, isBefore, startOfDay, addDays } from 'date-fns'
-import { Button } from '@/components/ui/button'
 import 'react-day-picker/dist/style.css'
 
 const NOMES_DIAS: Record<number, string> = {
@@ -34,9 +33,10 @@ export function CalendarioAgendamento({ datasBlockeadas, diasComAtendimento, dat
     return false
   }
 
-  const handleSelecionarData = () => {
-    if (!dataSelecionada) return
-    const dataStr = format(dataSelecionada, 'yyyy-MM-dd')
+  const handleSelecionarData = (data: Date | undefined) => {
+    setDataSelecionada(data)
+    if (!data) return
+    const dataStr = format(data, 'yyyy-MM-dd')
     router.push(`/agendar/${dataStr}`)
   }
 
@@ -46,7 +46,7 @@ export function CalendarioAgendamento({ datasBlockeadas, diasComAtendimento, dat
         <DayPicker
           mode="single"
           selected={dataSelecionada}
-          onSelect={setDataSelecionada}
+          onSelect={handleSelecionarData}
           locale={ptBR}
           disabled={ehDesabilitado}
           fromDate={hoje}
@@ -77,21 +77,25 @@ export function CalendarioAgendamento({ datasBlockeadas, diasComAtendimento, dat
       </div>
 
       {dataSelecionada && (
-        <div className="mt-4 space-y-3">
+        <div className="mt-4">
           <p className="text-center text-sm text-purple-700 font-medium">
             📅 {format(dataSelecionada, "EEEE, d 'de' MMMM", { locale: ptBR })}
           </p>
-          <Button
-            size="lg"
-            className="w-full bg-purple-700 hover:bg-purple-800"
-            onClick={handleSelecionarData}
-          >
-            Ver horários disponíveis →
-          </Button>
+          <p className="text-center text-xs text-gray-400 mt-1">Carregando horários...</p>
         </div>
       )}
 
-      <p className="mt-4 text-center text-xs text-gray-400">
+      <div className="mt-4 flex items-center justify-center gap-4 text-xs text-gray-400">
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full bg-purple-600" />
+          disponível
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full border border-gray-300" />
+          sem horário
+        </span>
+      </div>
+      <p className="mt-2 text-center text-xs text-gray-400">
         Atendimentos: {diasComAtendimento.sort((a, b) => a - b).map((d) => NOMES_DIAS[d]).join(', ')}
       </p>
     </div>

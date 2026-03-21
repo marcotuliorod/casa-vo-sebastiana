@@ -1,7 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Search } from 'lucide-react'
+
+const LS_KEY = 'cvs_historico_tel'
 
 interface Props {
   defaultValue?: string
@@ -9,6 +11,13 @@ interface Props {
 
 export function HistoricoSearchForm({ defaultValue = '' }: Props) {
   const [value, setValue] = useState(defaultValue)
+
+  // Pré-preencher com o último telefone buscado
+  useEffect(() => {
+    if (defaultValue) return
+    const salvo = localStorage.getItem(LS_KEY)
+    if (salvo) setValue(salvo)
+  }, [defaultValue])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const nums = e.target.value.replace(/\D/g, '').slice(0, 11)
@@ -18,8 +27,12 @@ export function HistoricoSearchForm({ defaultValue = '' }: Props) {
     setValue(formatted)
   }
 
+  const handleSubmit = () => {
+    if (value) localStorage.setItem(LS_KEY, value)
+  }
+
   return (
-    <form method="GET" className="flex gap-2 mb-8">
+    <form method="GET" className="flex gap-2 mb-8" onSubmit={handleSubmit}>
       <input
         type="tel"
         name="tel"
