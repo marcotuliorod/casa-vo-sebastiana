@@ -13,8 +13,14 @@ export function TimeSlotGrid({ slots, data, slotSelecionado }: TimeSlotGridProps
     return (
       <div className="rounded-xl border-2 border-dashed border-gray-200 p-10 text-center">
         <p className="text-2xl">🌙</p>
-        <p className="mt-2 text-gray-500">Nenhum horário disponível nesta data.</p>
-        <p className="text-sm text-gray-400">Por favor, escolha outra data.</p>
+        <p className="mt-2 text-gray-500">Não há horários disponíveis para este dia.</p>
+        <p className="text-sm text-gray-400 mt-1">Todos os horários estão preenchidos.</p>
+        <Link
+          href="/agendar"
+          className="inline-flex items-center justify-center mt-4 text-sm text-purple-700 hover:underline"
+        >
+          ← Voltar ao calendário
+        </Link>
       </div>
     )
   }

@@ -49,6 +49,19 @@ export async function getAgendamentosDoMedium(
   return (data ?? []) as AgendamentoComCliente[]
 }
 
+// Buscar nome de um médium pelo id — para exibição na confirmação pública (US-10)
+export async function getMediumNome(id: string): Promise<string | null> {
+  const supabase = createAdminClient()
+
+  const { data } = await supabase
+    .from('mediuns')
+    .select('nome')
+    .eq('id', id)
+    .single()
+
+  return (data as { nome: string } | null)?.nome ?? null
+}
+
 // Agendamentos sem médium atribuído — disponíveis para assumir
 export async function getAgendamentosDisponiveisMedium(): Promise<AgendamentoComCliente[]> {
   const supabase = createAdminClient()

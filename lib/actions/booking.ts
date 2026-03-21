@@ -5,6 +5,7 @@
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/server'
+import { getSlotsDisponiveis } from '@/lib/queries/availability'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
 import { mensagemConfirmacao, mensagemCancelamento } from '@/lib/whatsapp/templates'
 import { normalizarTelefone } from '@/lib/utils/phone'
@@ -42,6 +43,15 @@ export async function criarAgendamento(
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
 
   const supabase = createAdminClient()
+
+  // 0. Validar que o slot solicitado existe e está disponível (BUG-02)
+  const { slots } = await getSlotsDisponiveis(data)
+  const slotValido = slots.some(
+    (s) => s.hora_inicio === hora_inicio && s.hora_fim === hora_fim
+  )
+  if (!slotValido) {
+    return { erro: 'Este horário não está mais disponível. Por favor, escolha outro.' }
+  }
 
   // 1. Upsert do cliente (por telefone)
   const { data: cliente, error: erroCliente } = await supabase

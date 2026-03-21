@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { getMediumPorToken, getAgendamentosDoMedium, getAgendamentosDisponiveisMedium } from '@/lib/queries/mediuns'
 import { MediumActions } from './MediumActions'
 import { formatarDataExtenso } from '@/lib/utils/date'
+import { formatarTelefone } from '@/lib/utils/phone'
 import type { AgendamentoComCliente } from '@/types/database'
 
 interface Props {
@@ -26,6 +27,17 @@ function CardAgendamento({
           {ag.hora_inicio} — {ag.hora_fim}
         </p>
         <p className="text-sm text-gray-600">{ag.clientes.nome}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-gray-500">{formatarTelefone(ag.clientes.telefone)}</p>
+          <a
+            href={`https://wa.me/${ag.clientes.telefone.replace(/\D/g, '')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-green-600 hover:underline"
+          >
+            WhatsApp ↗
+          </a>
+        </div>
         {ag.notas && (
           <p className="text-xs text-gray-400 italic">{ag.notas}</p>
         )}

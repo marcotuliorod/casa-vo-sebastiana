@@ -1,10 +1,12 @@
 // Passo 3: Preencher dados e confirmar
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ProgressSteps } from '@/components/booking/ProgressSteps'
 import { BookingForm } from '@/components/booking/BookingForm'
+import { Button } from '@/components/ui/button'
 import { ChevronLeft } from 'lucide-react'
-import { formatarDataExtenso } from '@/lib/utils/date'
+import { formatarDataExtenso, ehDataPassada } from '@/lib/utils/date'
+import { getSlotsDisponiveis } from '@/lib/queries/availability'
 
 interface Props {
   searchParams: Promise<{
@@ -26,6 +28,35 @@ export default async function ConfirmarPage({ searchParams }: Props) {
   if (!data || !hora_inicio || !hora_fim) notFound()
   if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) notFound()
   if (!/^\d{2}:\d{2}$/.test(hora_inicio)) notFound()
+
+  // US-15: redirecionar se data passada (não exibir formulário para datas inválidas)
+  if (ehDataPassada(data)) redirect('/agendar')
+
+  // US-09: verificar se o slot ainda está disponível
+  const { slots } = await getSlotsDisponiveis(data)
+  const slotDisponivel = slots.some(
+    (s) => s.hora_inicio === hora_inicio && s.hora_fim === hora_fim
+  )
+
+  if (!slotDisponivel) {
+    return (
+      <div>
+        <ProgressSteps passoAtual={3} />
+        <div className="rounded-2xl bg-white p-8 shadow-sm border text-center">
+          <p className="text-3xl">⏰</p>
+          <p className="mt-2 font-medium text-gray-700">
+            Este horário foi ocupado enquanto você preenchia o formulário.
+          </p>
+          <p className="text-sm text-gray-500 mt-1">
+            Por favor, escolha outro horário disponível.
+          </p>
+          <Button asChild className="mt-4" variant="outline">
+            <Link href={`/agendar/${data}`}>← Voltar ao passo 2</Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div>

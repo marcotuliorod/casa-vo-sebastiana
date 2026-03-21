@@ -8,24 +8,29 @@ import { format, isBefore, startOfDay, addDays } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import 'react-day-picker/dist/style.css'
 
-// Dias da semana disponíveis: Ter (2), Qua (3), Qui (4), Sex (5), Sáb (6)
-const DIAS_COM_ATENDIMENTO = [2, 3, 4, 5, 6]
-
-interface CalendarioProps {
-  datasBlockeadas: string[] // 'YYYY-MM-DD'
+const NOMES_DIAS: Record<number, string> = {
+  0: 'dom', 1: 'seg', 2: 'ter', 3: 'qua', 4: 'qui', 5: 'sex', 6: 'sáb',
 }
 
-export function CalendarioAgendamento({ datasBlockeadas }: CalendarioProps) {
+interface CalendarioProps {
+  datasBlockeadas: string[]    // 'YYYY-MM-DD'
+  diasComAtendimento: number[] // dias da semana ativos (BUG-03)
+  datasComSlots: string[]      // datas com pelo menos 1 slot livre (BUG-04)
+}
+
+export function CalendarioAgendamento({ datasBlockeadas, diasComAtendimento, datasComSlots }: CalendarioProps) {
   const router = useRouter()
   const [dataSelecionada, setDataSelecionada] = useState<Date | undefined>()
   const hoje = startOfDay(new Date())
 
   const bloqueadasSet = new Set(datasBlockeadas)
+  const comSlotsSet = new Set(datasComSlots)
 
   const ehDesabilitado = (data: Date) => {
     if (isBefore(data, hoje)) return true
-    if (!DIAS_COM_ATENDIMENTO.includes(data.getDay())) return true
+    if (!diasComAtendimento.includes(data.getDay())) return true
     if (bloqueadasSet.has(format(data, 'yyyy-MM-dd'))) return true
+    if (!comSlotsSet.has(format(data, 'yyyy-MM-dd'))) return true
     return false
   }
 
@@ -87,7 +92,7 @@ export function CalendarioAgendamento({ datasBlockeadas }: CalendarioProps) {
       )}
 
       <p className="mt-4 text-center text-xs text-gray-400">
-        Atendimentos: terça a sábado
+        Atendimentos: {diasComAtendimento.sort((a, b) => a - b).map((d) => NOMES_DIAS[d]).join(', ')}
       </p>
     </div>
   )

@@ -6,9 +6,10 @@ import { StatusBadge } from '@/components/admin/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { getAgendamentoPorToken } from '@/lib/queries/appointments'
+import { getMediumNome } from '@/lib/queries/mediuns'
 import { formatarDataExtenso } from '@/lib/utils/date'
 import { formatarTelefone } from '@/lib/utils/phone'
-import { Calendar, Clock, User, Phone, CheckCircle2 } from 'lucide-react'
+import { Calendar, Clock, User, Phone, CheckCircle2, Sparkles } from 'lucide-react'
 
 interface Props {
   params: Promise<{ token: string }>
@@ -19,6 +20,10 @@ export default async function AgendamentoPage({ params }: Props) {
   const agendamento = await getAgendamentoPorToken(token)
 
   if (!agendamento) notFound()
+
+  const mediumNome = agendamento.medium_id
+    ? await getMediumNome(agendamento.medium_id)
+    : null
 
   const podeCancel =
     agendamento.status === 'pendente' || agendamento.status === 'confirmado'
@@ -72,6 +77,13 @@ export default async function AgendamentoPage({ params }: Props) {
                   {agendamento.hora_inicio} — {agendamento.hora_fim}
                 </span>
               </div>
+
+              {mediumNome && (
+                <div className="flex items-center gap-3 text-gray-600">
+                  <Sparkles className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                  <span>Atendimento com: {mediumNome}</span>
+                </div>
+              )}
             </div>
 
             {agendamento.notas && (
