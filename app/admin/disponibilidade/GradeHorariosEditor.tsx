@@ -52,7 +52,8 @@ export function GradeHorariosEditor({ grade }: GradeHorariosEditorProps) {
 
   const slotMap = new Map<string, GradeHorario>()
   for (const g of grade) {
-    slotMap.set(`${g.dia_semana}_${g.hora_inicio}`, g)
+    // Supabase retorna colunas time como "HH:MM:SS" — normaliza para "HH:MM"
+    slotMap.set(`${g.dia_semana}_${g.hora_inicio.slice(0, 5)}`, g)
   }
 
   const diasComSlots = new Set(grade.map((g) => g.dia_semana))
@@ -68,7 +69,8 @@ export function GradeHorariosEditor({ grade }: GradeHorariosEditorProps) {
     const existente = slotMap.get(`${dia}_${slot.inicio}`)
     startTransition(async () => {
       if (existente) {
-        await toggleHorarioGrade(existente.id, !existente.ativo)
+        const resultado = await toggleHorarioGrade(existente.id, !existente.ativo)
+        if (resultado.erro) { setErro(resultado.erro); return }
       } else {
         const resultado = await ativarNovoSlot(dia, slot.inicio, slot.fim)
         if (resultado.erro) { setErro(resultado.erro); return }

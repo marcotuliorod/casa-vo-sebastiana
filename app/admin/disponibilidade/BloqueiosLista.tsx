@@ -1,6 +1,7 @@
 'use client'
 
 import { useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { useFormState, useFormStatus } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { bloquearData, desbloquearData } from '@/lib/actions/admin'
@@ -25,10 +26,12 @@ interface BloqueiosListaProps {
 export function BloqueiosLista({ bloqueios }: BloqueiosListaProps) {
   const [estado, action] = useFormState(bloquearData, null)
   const [, startTransition] = useTransition()
+  const router = useRouter()
 
   const handleRemover = (id: string) => {
     startTransition(async () => {
       await desbloquearData(id)
+      router.refresh()
     })
   }
 
@@ -105,7 +108,7 @@ export function BloqueiosLista({ bloqueios }: BloqueiosListaProps) {
                   {formatarData(b.data_bloqueada)}
                   {b.hora_inicio && (
                     <span className="text-gray-500 ml-2">
-                      {b.hora_inicio}–{b.hora_fim}
+                      {b.hora_inicio.slice(0, 5)}–{b.hora_fim?.slice(0, 5)}
                     </span>
                   )}
                   {!b.hora_inicio && (

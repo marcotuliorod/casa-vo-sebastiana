@@ -1,4 +1,5 @@
 // Gerenciamento da grade de horários
+import { formatInTimeZone } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/server'
 import { GradeHorariosEditor } from './GradeHorariosEditor'
 import { BloqueiosLista } from './BloqueiosLista'
@@ -20,7 +21,7 @@ export default async function DisponibilidadePage() {
     supabase
       .from('datas_bloqueadas')
       .select('*')
-      .gte('data_bloqueada', new Date().toISOString().split('T')[0])
+      .gte('data_bloqueada', formatInTimeZone(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd'))
       .order('data_bloqueada'),
   ])
 
