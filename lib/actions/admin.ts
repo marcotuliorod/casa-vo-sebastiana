@@ -122,6 +122,7 @@ export async function toggleHorarioGrade(id: string, ativo: boolean) {
     .eq('id', id)
 
   revalidatePath('/admin/disponibilidade')
+  revalidatePath('/agendar') // BUG-05: invalida calendário público
 }
 
 // Inserir novo slot na grade (ainda não existia no banco)
@@ -129,17 +130,21 @@ export async function ativarNovoSlot(
   diaSemana: number,
   horaInicio: string,
   horaFim: string
-): Promise<void> {
+): Promise<{ erro?: string }> {
   const supabase = createAdminClient()
 
-  await supabase.from('grade_horarios').insert({
+  const { error } = await supabase.from('grade_horarios').insert({
     dia_semana: diaSemana,
     hora_inicio: horaInicio,
     hora_fim: horaFim,
     ativo: true,
   })
 
+  if (error) return { erro: error.message } // BUG-06: propaga erro ao invés de falhar silenciosamente
+
   revalidatePath('/admin/disponibilidade')
+  revalidatePath('/agendar') // BUG-05: invalida calendário público
+  return {}
 }
 
 // ─── Médiuns ──────────────────────────────────────────────────────────────────
@@ -201,5 +206,6 @@ export async function atribuirMedium(
   if (error) return { erro: error.message }
 
   revalidatePath('/admin/agendamentos')
+  revalidatePath('/admin') // BUG-07: sincroniza Dashboard após atribuição de médium
   return {}
 }

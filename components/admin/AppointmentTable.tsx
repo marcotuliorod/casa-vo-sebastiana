@@ -12,7 +12,7 @@ import { Check, X, Loader2, Download } from 'lucide-react'
 
 interface AppointmentTableProps {
   agendamentos: AgendamentoComCliente[]
-  mediuns: Medium[]
+  mediuns?: Medium[]
 }
 
 function MediumSelect({
@@ -85,7 +85,7 @@ function ExportarCSVButton({ agendamentos, mediuns }: AppointmentTableProps) {
   )
 }
 
-export function AppointmentTable({ agendamentos, mediuns }: AppointmentTableProps) {
+export function AppointmentTable({ agendamentos, mediuns = [] }: AppointmentTableProps) {
   const [atualizando, setAtualizando] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 

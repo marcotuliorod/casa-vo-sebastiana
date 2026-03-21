@@ -45,6 +45,7 @@ interface GradeHorariosEditorProps {
 
 export function GradeHorariosEditor({ grade }: GradeHorariosEditorProps) {
   const [turno, setTurno] = useState<Turno>('todos')
+  const [erro, setErro] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   const slotMap = new Map<string, GradeHorario>()
@@ -61,12 +62,14 @@ export function GradeHorariosEditor({ grade }: GradeHorariosEditorProps) {
 
   const handleClick = (dia: number, slot: { inicio: string; fim: string }) => {
     if (isPending) return
+    setErro(null)
     const existente = slotMap.get(`${dia}_${slot.inicio}`)
     startTransition(async () => {
       if (existente) {
         await toggleHorarioGrade(existente.id, !existente.ativo)
       } else {
-        await ativarNovoSlot(dia, slot.inicio, slot.fim)
+        const resultado = await ativarNovoSlot(dia, slot.inicio, slot.fim)
+        if (resultado.erro) setErro(resultado.erro) // BUG-06: exibe erro ao usuário
       }
     })
   }
@@ -75,6 +78,12 @@ export function GradeHorariosEditor({ grade }: GradeHorariosEditorProps) {
 
   return (
     <div className="bg-white rounded-xl border overflow-hidden">
+      {/* BUG-06: feedback de erro ao adicionar slot */}
+      {erro && (
+        <div className="px-4 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700">
+          Erro ao adicionar horário: {erro}
+        </div>
+      )}
       {/* Filtro de turno */}
       <div className="px-4 py-3 border-b bg-gray-50 flex items-center gap-2 flex-wrap">
         <span className="text-xs font-medium text-gray-500 mr-1">Filtrar por turno:</span>
