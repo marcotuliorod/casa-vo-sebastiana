@@ -58,8 +58,8 @@ export async function getSlotsDisponiveis(data: string): Promise<ResultadoDispon
         !horariosOcupados.has(slot.hora_inicio)
     )
     .map((slot) => ({
-      hora_inicio: slot.hora_inicio,
-      hora_fim: slot.hora_fim,
+      hora_inicio: slot.hora_inicio.slice(0, 5), // BUG-08: normaliza HH:MM:SS → HH:MM
+      hora_fim: slot.hora_fim.slice(0, 5),
     }))
 
   return { slots: slotsDisponiveis }

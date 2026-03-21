@@ -95,7 +95,7 @@ export async function bloquearData(
   }
 
   revalidatePath('/admin/disponibilidade')
-  revalidatePath('/agendar') // GAP-03: invalida calendário público ao bloquear data
+  revalidatePath('/agendar') // GAP-03 / BUG-09: invalida calendário público ao bloquear data
   return {}
 }
 
@@ -143,6 +143,7 @@ export async function atualizarGradeHorarios(
   }
 
   revalidatePath('/admin/disponibilidade')
+  revalidatePath('/agendar') // BUG-09: atualiza calendário público após salvar grade
   return {}
 }
 
