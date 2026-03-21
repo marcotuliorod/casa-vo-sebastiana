@@ -13,10 +13,12 @@ import { Calendar, Clock, User, Phone, CheckCircle2, Sparkles } from 'lucide-rea
 
 interface Props {
   params: Promise<{ token: string }>
+  searchParams: Promise<{ from?: string }>
 }
 
-export default async function AgendamentoPage({ params }: Props) {
+export default async function AgendamentoPage({ params, searchParams }: Props) {
   const { token } = await params
+  const { from } = await searchParams
   const agendamento = await getAgendamentoPorToken(token)
 
   if (!agendamento) notFound()
@@ -124,6 +126,15 @@ export default async function AgendamentoPage({ params }: Props) {
             </Button>
           )}
         </div>
+
+        {/* US-24: link de volta ao histórico quando navegou por lá */}
+        {from === 'historico' && (
+          <div className="mt-4 text-center">
+            <Link href="/historico" className="text-xs text-purple-600 hover:underline">
+              ← Meu histórico de agendamentos
+            </Link>
+          </div>
+        )}
 
         <p className="mt-8 text-center text-xs text-gray-400">
           🌿 Casa de Vó Sebastiana — Umbanda & Atendimento Espiritual

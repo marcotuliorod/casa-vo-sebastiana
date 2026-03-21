@@ -1,7 +1,10 @@
 // Queries de agendamentos para o painel admin e área pública
 
+import { formatInTimeZone } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/server'
 import type { AgendamentoComCliente, AppointmentStatus } from '@/types/database'
+
+const TZ = 'America/Sao_Paulo'
 
 // Buscar agendamento pelo token público (sem login)
 export async function getAgendamentoPorToken(token: string) {
@@ -67,7 +70,9 @@ export async function listarAgendamentos(filtros?: {
 // Estatísticas para o dashboard
 export async function getEstatisticas() {
   const supabase = createAdminClient()
-  const hoje = new Date().toISOString().split('T')[0]
+  const agora = new Date()
+  const hoje = formatInTimeZone(agora, TZ, 'yyyy-MM-dd')
+  const daqui7 = formatInTimeZone(new Date(agora.getTime() + 7 * 24 * 60 * 60 * 1000), TZ, 'yyyy-MM-dd')
 
   const [hoje_count, semana_count, mes_count, total_clientes] = await Promise.all([
     supabase
@@ -80,7 +85,7 @@ export async function getEstatisticas() {
       .from('agendamentos')
       .select('*', { count: 'exact', head: true })
       .gte('data_agendada', hoje)
-      .lte('data_agendada', new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0])
+      .lte('data_agendada', daqui7)
       .not('status', 'eq', 'cancelado'),
 
     supabase

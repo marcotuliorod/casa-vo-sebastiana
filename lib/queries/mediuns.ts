@@ -49,6 +49,16 @@ export async function getAgendamentosDoMedium(
   return (data ?? []) as AgendamentoComCliente[]
 }
 
+// Mapa de id → nome para múltiplos médiuns (batch, para histórico do consulente)
+export async function getMediunsNomesMap(ids: string[]): Promise<Record<string, string>> {
+  if (ids.length === 0) return {}
+  const supabase = createAdminClient()
+  const { data } = await supabase.from('mediuns').select('id, nome').in('id', ids)
+  const map: Record<string, string> = {}
+  for (const m of data ?? []) map[(m as { id: string; nome: string }).id] = (m as { id: string; nome: string }).nome
+  return map
+}
+
 // Buscar nome de um médium pelo id — para exibição na confirmação pública (US-10)
 export async function getMediumNome(id: string): Promise<string | null> {
   const supabase = createAdminClient()

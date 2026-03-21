@@ -44,7 +44,42 @@ export async function criarAgendamento(
 
   const supabase = createAdminClient()
 
-  // 0. Validar que o slot solicitado existe e está disponível (BUG-02)
+  // 0a. US-19: verificar limite de agendamentos por cliente por mês
+  const limiteStr = process.env.MAX_AGENDAMENTOS_MES
+  if (limiteStr) {
+    const limite = parseInt(limiteStr, 10)
+    if (!isNaN(limite) && limite > 0) {
+      const inicioMes = `${data.slice(0, 7)}-01`
+      const [anoNum, mesNum] = data.split('-').map(Number)
+      const inicioProxMes = mesNum === 12
+        ? `${anoNum + 1}-01-01`
+        : `${anoNum}-${String(mesNum + 1).padStart(2, '0')}-01`
+
+      const { data: clienteExistente } = await supabase
+        .from('clientes')
+        .select('id')
+        .eq('telefone', telefoneNormalizado)
+        .single()
+
+      if (clienteExistente) {
+        const { count } = await supabase
+          .from('agendamentos')
+          .select('*', { count: 'exact', head: true })
+          .eq('cliente_id', clienteExistente.id)
+          .gte('data_agendada', inicioMes)
+          .lt('data_agendada', inicioProxMes)
+          .not('status', 'eq', 'cancelado')
+
+        if (count !== null && count >= limite) {
+          return {
+            erro: `Você já tem ${limite} agendamento${limite !== 1 ? 's' : ''} neste mês. Entre em contato com a casa para mais informações.`,
+          }
+        }
+      }
+    }
+  }
+
+  // 0b. Validar que o slot solicitado existe e está disponível (BUG-02)
   const { slots } = await getSlotsDisponiveis(data)
   const slotValido = slots.some(
     (s) => s.hora_inicio === hora_inicio && s.hora_fim === hora_fim

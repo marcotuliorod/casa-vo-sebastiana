@@ -2,10 +2,12 @@
 import Link from 'next/link'
 import { Logo } from '@/components/shared/Logo'
 import { StatusBadge } from '@/components/admin/StatusBadge'
+import { HistoricoSearchForm } from './HistoricoSearchForm'
 import { getHistoricoCliente } from '@/lib/queries/appointments'
+import { getMediunsNomesMap } from '@/lib/queries/mediuns'
 import { formatarDataExtenso } from '@/lib/utils/date'
 import { normalizarTelefone, validarTelefone } from '@/lib/utils/phone'
-import { Calendar, Clock, Sparkles, Search } from 'lucide-react'
+import { Calendar, Clock, Sparkles } from 'lucide-react'
 
 export const metadata = {
   title: 'Meus Agendamentos | Casa de Vó Sebastiana',
@@ -24,6 +26,12 @@ export default async function HistoricoPage({ searchParams }: Props) {
     ? await getHistoricoCliente(normalizarTelefone(telefone))
     : null
 
+  // US-23: batch fetch nomes de médiuns para os cards
+  const mediumIds = agendamentos
+    ? Array.from(new Set(agendamentos.map((ag) => ag.medium_id).filter(Boolean) as string[]))
+    : []
+  const mediumNomes = await getMediunsNomesMap(mediumIds)
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-50 via-background to-background">
       <div className="mx-auto max-w-md px-4 py-10">
@@ -37,23 +45,8 @@ export default async function HistoricoPage({ searchParams }: Props) {
           </p>
         </div>
 
-        {/* Formulário de busca */}
-        <form method="GET" className="flex gap-2 mb-8">
-          <input
-            type="tel"
-            name="tel"
-            defaultValue={telefone}
-            placeholder="(11) 99999-9999"
-            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
-          />
-          <button
-            type="submit"
-            className="flex items-center gap-1.5 rounded-lg bg-purple-700 px-4 py-2 text-sm font-medium text-white hover:bg-purple-800"
-          >
-            <Search className="h-4 w-4" />
-            Buscar
-          </button>
-        </form>
+        {/* US-22: Formulário com máscara de telefone */}
+        <HistoricoSearchForm defaultValue={telefone} />
 
         {/* Resultados */}
         {agendamentos === null ? null : agendamentos.length === 0 ? (
@@ -71,7 +64,7 @@ export default async function HistoricoPage({ searchParams }: Props) {
             {agendamentos.map((ag) => (
               <Link
                 key={ag.id}
-                href={`/agendamento/${ag.token_publico}`}
+                href={`/agendamento/${ag.token_publico}?from=historico`}
                 className="block bg-white rounded-xl border p-4 hover:border-purple-200 transition-colors"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -89,7 +82,8 @@ export default async function HistoricoPage({ searchParams }: Props) {
                     {ag.medium_id && (
                       <div className="flex items-center gap-2 text-xs text-gray-400">
                         <Sparkles className="h-3 w-3 text-purple-300 flex-shrink-0" />
-                        <span>Atendimento com médium</span>
+                        {/* US-23: nome real do médium */}
+                        <span>Com: {mediumNomes[ag.medium_id] ?? 'Médium'}</span>
                       </div>
                     )}
                   </div>
