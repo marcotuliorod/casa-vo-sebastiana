@@ -114,7 +114,7 @@ export async function criarAgendamento(
       data_agendada: data,
       hora_inicio,
       hora_fim,
-      status: 'confirmado',
+      status: 'pendente',
       notas: notas || null,
     })
     .select()

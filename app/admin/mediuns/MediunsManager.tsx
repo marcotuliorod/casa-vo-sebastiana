@@ -1,7 +1,8 @@
 'use client'
 
 import { useFormState, useFormStatus } from 'react-dom'
-import { useTransition } from 'react'
+import { useTransition, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { criarMedium, toggleMediumAtivo } from '@/lib/actions/admin'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,11 +44,13 @@ function CopiarLink({ token }: { token: string }) {
 }
 
 function ToggleAtivoButton({ medium }: { medium: Medium }) {
+  const router = useRouter()
   const [, startTransition] = useTransition()
 
   const handleToggle = () => {
     startTransition(async () => {
       await toggleMediumAtivo(medium.id, !medium.ativo)
+      router.refresh()
     })
   }
 
@@ -78,7 +81,14 @@ function ToggleAtivoButton({ medium }: { medium: Medium }) {
 }
 
 export function MediunsManager({ mediuns }: MediunsManagerProps) {
+  const router = useRouter()
   const [estado, action] = useFormState(criarMedium, null)
+
+  useEffect(() => {
+    if (estado && !estado.erro) {
+      router.refresh()
+    }
+  }, [estado])
 
   return (
     <div className="space-y-6">

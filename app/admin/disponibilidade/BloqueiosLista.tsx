@@ -1,6 +1,6 @@
 'use client'
 
-import { useTransition } from 'react'
+import { useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useFormState, useFormStatus } from 'react-dom'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,12 @@ export function BloqueiosLista({ bloqueios }: BloqueiosListaProps) {
   const [estado, action] = useFormState(bloquearData, null)
   const [, startTransition] = useTransition()
   const router = useRouter()
+
+  useEffect(() => {
+    if (estado && !estado.erro) {
+      router.refresh()
+    }
+  }, [estado])
 
   const handleRemover = (id: string) => {
     startTransition(async () => {
