@@ -160,6 +160,26 @@ export async function getDatasComSlotsDisponiveis(datas: string[]): Promise<stri
   return datasComSlots
 }
 
+// Verifica se um slot específico está disponível — 1 query (RES-01)
+// Usado pelo passo 3 (UX) em vez de getSlotsDisponiveis completo
+export async function verificarSlotEspecifico(
+  data: string,
+  horaInicio: string,
+  horaFim: string
+): Promise<boolean> {
+  const supabase = createAdminClient()
+
+  const { count } = await supabase
+    .from('agendamentos')
+    .select('id', { count: 'exact', head: true })
+    .eq('data_agendada', data)
+    .eq('hora_inicio', horaInicio)
+    .eq('hora_fim', horaFim)
+    .in('status', ['pendente', 'confirmado'])
+
+  return count === 0
+}
+
 // Retorna datas que têm pelo menos 1 slot disponível em um mês — O(3 queries) (US-11)
 export async function getDatasDisponiveis(ano: number, mes: number): Promise<string[]> {
   const primeiroDia = new Date(ano, mes - 1, 1)

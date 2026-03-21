@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ erro: 'Não autorizado' }, { status: 401 })
   }
 
@@ -89,10 +89,56 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // US-16: Processar fila de retry de mensagens com falha
+  let retryProcessados = 0
+  let retryFalhas = 0
+
+  const agora = new Date().toISOString()
+  const { data: fila } = await supabase
+    .from('whatsapp_queue')
+    .select('*')
+    .eq('status', 'pendente')
+    .lte('proximo_retry', agora)
+    .lt('tentativas', 3)
+
+  if (fila?.length) {
+    const provedorRetry = getProvedorWhatsApp()
+    for (const item of fila) {
+      const resultado = await provedorRetry.enviarMensagem({
+        para: item.telefone,
+        corpo: item.mensagem,
+      })
+
+      const novasTentativas = item.tentativas + 1
+      const novoStatus = resultado.sucesso
+        ? 'enviado'
+        : novasTentativas >= item.max_tentativas
+          ? 'falhou'
+          : 'pendente'
+
+      // Próximo retry: backoff exponencial (15min, 1h, 4h)
+      const minutosBackoff = [15, 60, 240][novasTentativas - 1] ?? 240
+      const proximoRetry = new Date(Date.now() + minutosBackoff * 60 * 1000).toISOString()
+
+      await supabase
+        .from('whatsapp_queue')
+        .update({
+          tentativas: novasTentativas,
+          status: novoStatus,
+          proximo_retry: proximoRetry,
+        })
+        .eq('id', item.id)
+
+      if (resultado.sucesso) retryProcessados++
+      else retryFalhas++
+    }
+  }
+
   return NextResponse.json({
     processados,
     falhas,
     total: agendamentos.length,
     data_alvo: dataAmanha,
+    retry: { processados: retryProcessados, falhas: retryFalhas, total: fila?.length ?? 0 },
   })
 }

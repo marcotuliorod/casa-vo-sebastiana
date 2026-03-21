@@ -2,20 +2,20 @@
 import { ProgressSteps } from '@/components/booking/ProgressSteps'
 import { CalendarioAgendamento } from './CalendarioAgendamento'
 import { getDatasBlockeadas, getDiasAtivos, getDatasComSlotsDisponiveis } from '@/lib/queries/availability'
+import { formatInTimeZone } from 'date-fns-tz'
 
 export const metadata = {
   title: 'Agendar — Escolha a data | Casa de Vó Sebastiana',
 }
 
 export default async function AgendarPage() {
-  // Gerar próximas 60 datas a partir de hoje
-  const hoje = new Date()
-  hoje.setHours(0, 0, 0, 0)
+  // Gerar próximas 60 datas a partir de hoje no fuso de SP (RES-02)
+  const hojeStr = formatInTimeZone(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd')
   const datasProximas: string[] = []
   for (let i = 0; i <= 60; i++) {
-    const d = new Date(hoje)
+    const d = new Date(`${hojeStr}T12:00:00`)
     d.setDate(d.getDate() + i)
-    datasProximas.push(d.toISOString().split('T')[0])
+    datasProximas.push(formatInTimeZone(d, 'America/Sao_Paulo', 'yyyy-MM-dd'))
   }
 
   const [datasBlockeadas, diasAtivos, datasComSlots] = await Promise.all([

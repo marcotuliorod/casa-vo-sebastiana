@@ -51,6 +51,31 @@ export function mensagemLembrete24h(info: InfoAgendamento): string {
   ].join('\n')
 }
 
+// ─── Notificação Admin — Novo Agendamento ─────────────────────
+
+interface InfoNovoAgendamentoAdmin {
+  nomeCliente: string
+  telefoneCliente: string
+  dataAgendada: string  // 'YYYY-MM-DD'
+  horaInicio: string
+  horaFim: string
+}
+
+export function mensagemNovoAgendamentoAdmin(info: InfoNovoAgendamentoAdmin): string {
+  const data = parseISO(info.dataAgendada)
+  const dataFormatada = format(data, "EEEE, d 'de' MMMM", { locale: ptBR })
+
+  return [
+    `📅 *Novo agendamento*`,
+    ``,
+    `👤 ${info.nomeCliente}`,
+    `📱 ${info.telefoneCliente}`,
+    ``,
+    `🗓️ ${dataFormatada}`,
+    `🕐 ${info.horaInicio} — ${info.horaFim}`,
+  ].join('\n')
+}
+
 // ─── Cancelamento ─────────────────────────────────────────────
 
 export function mensagemCancelamento(info: InfoAgendamento): string {

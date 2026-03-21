@@ -6,7 +6,7 @@ import { BookingForm } from '@/components/booking/BookingForm'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft } from 'lucide-react'
 import { formatarDataExtenso, ehDataPassada } from '@/lib/utils/date'
-import { getSlotsDisponiveis } from '@/lib/queries/availability'
+import { verificarSlotEspecifico } from '@/lib/queries/availability'
 
 interface Props {
   searchParams: Promise<{
@@ -32,11 +32,8 @@ export default async function ConfirmarPage({ searchParams }: Props) {
   // US-15: redirecionar se data passada (não exibir formulário para datas inválidas)
   if (ehDataPassada(data)) redirect('/agendar')
 
-  // US-09: verificar se o slot ainda está disponível
-  const { slots } = await getSlotsDisponiveis(data)
-  const slotDisponivel = slots.some(
-    (s) => s.hora_inicio === hora_inicio && s.hora_fim === hora_fim
-  )
+  // US-09: verificar se o slot ainda está disponível (RES-01: 1 query em vez de 3)
+  const slotDisponivel = await verificarSlotEspecifico(data, hora_inicio, hora_fim)
 
   if (!slotDisponivel) {
     return (

@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getSlotsDisponiveis } from '@/lib/queries/availability'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
-import { mensagemConfirmacao, mensagemCancelamento } from '@/lib/whatsapp/templates'
+import { mensagemConfirmacao, mensagemCancelamento, mensagemNovoAgendamentoAdmin } from '@/lib/whatsapp/templates'
 import { normalizarTelefone } from '@/lib/utils/phone'
 
 // Schema de validação para criação de agendamento
@@ -94,38 +94,74 @@ export async function criarAgendamento(
   }
 
   // 3. Enviar mensagem de confirmação via WhatsApp
+  const mensagemWpp = mensagemConfirmacao({
+    nomeCliente: nome,
+    dataAgendada: data,
+    horaInicio: hora_inicio,
+    tokenPublico: agendamento.token_publico,
+    baseUrl,
+  })
+
   try {
     const provedor = getProvedorWhatsApp()
-    const mensagem = mensagemConfirmacao({
-      nomeCliente: nome,
-      dataAgendada: data,
-      horaInicio: hora_inicio,
-      tokenPublico: agendamento.token_publico,
-      baseUrl,
-    })
-
     const resultado = await provedor.enviarMensagem({
       para: telefoneNormalizado,
-      corpo: mensagem,
+      corpo: mensagemWpp,
     })
 
-    // Registrar log independente do resultado
     await supabase.from('logs_whatsapp').insert({
       agendamento_id: agendamento.id,
       evento: 'confirmacao_agendamento',
       provedor: provedor.nome,
       para_telefone: telefoneNormalizado,
-      mensagem,
+      mensagem: mensagemWpp,
       id_mensagem_provedor: resultado.idMensagemProvedor ?? null,
       status: resultado.sucesso ? 'enviado' : 'falhou',
       mensagem_erro: resultado.erro ?? null,
     })
+
+    // US-16: enfileirar retry se falhou
+    if (!resultado.sucesso) {
+      await supabase.from('whatsapp_queue').insert({
+        agendamento_id: agendamento.id,
+        telefone: telefoneNormalizado,
+        mensagem: mensagemWpp,
+        tipo: 'confirmacao',
+      })
+    }
   } catch (err) {
-    // Falha no WhatsApp não cancela o agendamento
-    console.error('Erro ao enviar WhatsApp:', err)
+    // Falha no WhatsApp (ex: credenciais ausentes) não cancela o agendamento
+    console.error('[WhatsApp] Falha ao enviar confirmação:', err)
+    // US-16: enfileirar para retry quando credenciais estiverem configuradas
+    await supabase.from('whatsapp_queue').insert({
+      agendamento_id: agendamento.id,
+      telefone: telefoneNormalizado,
+      mensagem: mensagemWpp,
+      tipo: 'confirmacao',
+    }).then(({ error }) => {
+      if (error) console.error('[WhatsApp] Falha ao enfileirar retry:', error)
+    })
   }
 
-  // 4. Redirecionar para a página de confirmação
+  // 4. Notificar admin sobre novo agendamento (US-17)
+  const adminWhatsApp = process.env.ADMIN_WHATSAPP
+  if (adminWhatsApp) {
+    try {
+      const provedor = getProvedorWhatsApp()
+      const msgAdmin = mensagemNovoAgendamentoAdmin({
+        nomeCliente: nome,
+        telefoneCliente: telefoneNormalizado,
+        dataAgendada: data,
+        horaInicio: hora_inicio,
+        horaFim: hora_fim,
+      })
+      await provedor.enviarMensagem({ para: adminWhatsApp, corpo: msgAdmin })
+    } catch (err) {
+      console.error('[WhatsApp] Falha ao notificar admin:', err)
+    }
+  }
+
+  // 5. Redirecionar para a página de confirmação
   redirect(`/agendamento/${agendamento.token_publico}`)
 }
 
