@@ -76,6 +76,23 @@ export function mensagemNovoAgendamentoAdmin(info: InfoNovoAgendamentoAdmin): st
   ].join('\n')
 }
 
+// ─── Notificação Admin — Cancelamento ─────────────────────────
+
+export function mensagemCancelamentoAdmin(info: InfoNovoAgendamentoAdmin): string {
+  const data = parseISO(info.dataAgendada)
+  const dataFormatada = format(data, "EEEE, d 'de' MMMM", { locale: ptBR })
+
+  return [
+    `❌ *Cancelamento de agendamento*`,
+    ``,
+    `👤 ${info.nomeCliente}`,
+    `📱 ${info.telefoneCliente}`,
+    ``,
+    `🗓️ ${dataFormatada}`,
+    `🕐 ${info.horaInicio} — ${info.horaFim}`,
+  ].join('\n')
+}
+
 // ─── Cancelamento ─────────────────────────────────────────────
 
 export function mensagemCancelamento(info: InfoAgendamento): string {

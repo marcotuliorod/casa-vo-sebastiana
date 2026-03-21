@@ -102,6 +102,30 @@ export async function getEstatisticas() {
   }
 }
 
+// Histórico de agendamentos do consulente (por telefone normalizado)
+export async function getHistoricoCliente(telefone: string) {
+  const supabase = createAdminClient()
+
+  // 1. Buscar cliente pelo telefone
+  const { data: cliente } = await supabase
+    .from('clientes')
+    .select('id')
+    .eq('telefone', telefone)
+    .single()
+
+  if (!cliente) return []
+
+  // 2. Buscar agendamentos do cliente
+  const { data, error } = await supabase
+    .from('agendamentos')
+    .select('*, clientes(*)')
+    .eq('cliente_id', cliente.id)
+    .order('data_agendada', { ascending: false })
+
+  if (error) return []
+  return data as AgendamentoComCliente[]
+}
+
 // Agendamentos para o cron de lembretes
 export async function getAgendamentosParaLembrete(data: string) {
   const supabase = createAdminClient()

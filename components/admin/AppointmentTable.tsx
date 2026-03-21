@@ -8,7 +8,7 @@ import { atualizarStatusAgendamento, atribuirMedium } from '@/lib/actions/admin'
 import { formatarData } from '@/lib/utils/date'
 import { formatarTelefone as fmtPhone } from '@/lib/utils/phone'
 import type { AgendamentoComCliente, AppointmentStatus, Medium } from '@/types/database'
-import { MoreHorizontal, Check, X, Loader2 } from 'lucide-react'
+import { Check, X, Loader2, Download } from 'lucide-react'
 
 interface AppointmentTableProps {
   agendamentos: AgendamentoComCliente[]
@@ -50,6 +50,41 @@ function MediumSelect({
   )
 }
 
+function ExportarCSVButton({ agendamentos, mediuns }: AppointmentTableProps) {
+  const handleExport = () => {
+    const headers = ['Data', 'Horário', 'Consulente', 'Telefone', 'Médium', 'Status']
+    const rows = agendamentos.map((ag) => {
+      const medium = mediuns.find((m) => m.id === ag.medium_id)?.nome ?? '—'
+      return [
+        ag.data_agendada,
+        `${ag.hora_inicio}–${ag.hora_fim}`,
+        ag.clientes.nome,
+        ag.clientes.telefone,
+        medium,
+        ag.status,
+      ]
+    })
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `agendamentos-${new Date().toISOString().slice(0, 7)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <Button variant="outline" size="sm" onClick={handleExport} className="flex items-center gap-1.5">
+      <Download className="h-3.5 w-3.5" />
+      Exportar CSV
+    </Button>
+  )
+}
+
 export function AppointmentTable({ agendamentos, mediuns }: AppointmentTableProps) {
   const [atualizando, setAtualizando] = useState<string | null>(null)
   const [, startTransition] = useTransition()
@@ -72,6 +107,10 @@ export function AppointmentTable({ agendamentos, mediuns }: AppointmentTableProp
   }
 
   return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <ExportarCSVButton agendamentos={agendamentos} mediuns={mediuns} />
+      </div>
     <div className="overflow-x-auto rounded-xl border bg-white shadow-sm">
       <table className="w-full text-sm">
         <thead className="border-b bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -160,6 +199,7 @@ export function AppointmentTable({ agendamentos, mediuns }: AppointmentTableProp
           ))}
         </tbody>
       </table>
+    </div>
     </div>
   )
 }

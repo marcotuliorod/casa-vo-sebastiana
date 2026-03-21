@@ -44,9 +44,15 @@ export async function GET(request: NextRequest) {
   let processados = 0
   let falhas = 0
 
-  const provedor = getProvedorWhatsApp()
+  // BUG-OBS02: getProvedorWhatsApp() pode lançar se credenciais ausentes — não deve crashar o cron
+  let provedor: ReturnType<typeof getProvedorWhatsApp> | null = null
+  try {
+    provedor = getProvedorWhatsApp()
+  } catch (err) {
+    console.error('[Cron lembretes] WhatsApp não disponível — pulando envio de lembretes:', err)
+  }
 
-  for (const ag of agendamentos) {
+  if (provedor) for (const ag of agendamentos) {
     const mensagem = mensagemLembrete24h({
       nomeCliente: ag.clientes.nome,
       dataAgendada: ag.data_agendada,
@@ -102,8 +108,14 @@ export async function GET(request: NextRequest) {
     .lt('tentativas', 3)
 
   if (fila?.length) {
-    const provedorRetry = getProvedorWhatsApp()
-    for (const item of fila) {
+    let provedorRetry: ReturnType<typeof getProvedorWhatsApp> | null = null
+    try {
+      provedorRetry = getProvedorWhatsApp()
+    } catch (err) {
+      console.error('[Cron lembretes] WhatsApp não disponível — pulando retry queue:', err)
+    }
+
+    if (provedorRetry) for (const item of fila) {
       const resultado = await provedorRetry.enviarMensagem({
         para: item.telefone,
         corpo: item.mensagem,

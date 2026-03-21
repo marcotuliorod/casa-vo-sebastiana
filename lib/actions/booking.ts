@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getSlotsDisponiveis } from '@/lib/queries/availability'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
-import { mensagemConfirmacao, mensagemCancelamento, mensagemNovoAgendamentoAdmin } from '@/lib/whatsapp/templates'
+import { mensagemConfirmacao, mensagemCancelamento, mensagemNovoAgendamentoAdmin, mensagemCancelamentoAdmin } from '@/lib/whatsapp/templates'
 import { normalizarTelefone } from '@/lib/utils/phone'
 
 // Schema de validação para criação de agendamento
@@ -199,7 +199,7 @@ export async function cancelarAgendamento(token: string): Promise<{ erro?: strin
     return { erro: 'Erro ao cancelar. Tente novamente.' }
   }
 
-  // Enviar mensagem de cancelamento
+  // Enviar mensagem de cancelamento ao consulente
   try {
     const provedor = getProvedorWhatsApp()
     const mensagem = mensagemCancelamento({
@@ -226,7 +226,25 @@ export async function cancelarAgendamento(token: string): Promise<{ erro?: strin
       mensagem_erro: resultado.erro ?? null,
     })
   } catch (err) {
-    console.error('Erro ao enviar WhatsApp de cancelamento:', err)
+    console.error('[WhatsApp] Erro ao enviar mensagem de cancelamento:', err)
+  }
+
+  // Notificar admin sobre cancelamento (US-21)
+  const adminWhatsApp = process.env.ADMIN_WHATSAPP
+  if (adminWhatsApp) {
+    try {
+      const provedor = getProvedorWhatsApp()
+      const msgAdmin = mensagemCancelamentoAdmin({
+        nomeCliente: agendamento.clientes.nome,
+        telefoneCliente: agendamento.clientes.telefone,
+        dataAgendada: agendamento.data_agendada,
+        horaInicio: agendamento.hora_inicio,
+        horaFim: agendamento.hora_fim,
+      })
+      await provedor.enviarMensagem({ para: adminWhatsApp, corpo: msgAdmin })
+    } catch (err) {
+      console.error('[WhatsApp] Falha ao notificar admin sobre cancelamento:', err)
+    }
   }
 
   return {}
