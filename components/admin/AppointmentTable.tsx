@@ -4,17 +4,53 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { StatusBadge } from './StatusBadge'
 import { Button } from '@/components/ui/button'
-import { atualizarStatusAgendamento } from '@/lib/actions/admin'
+import { atualizarStatusAgendamento, atribuirMedium } from '@/lib/actions/admin'
 import { formatarData } from '@/lib/utils/date'
 import { formatarTelefone as fmtPhone } from '@/lib/utils/phone'
-import type { AgendamentoComCliente, AppointmentStatus } from '@/types/database'
+import type { AgendamentoComCliente, AppointmentStatus, Medium } from '@/types/database'
 import { MoreHorizontal, Check, X, Loader2 } from 'lucide-react'
 
 interface AppointmentTableProps {
   agendamentos: AgendamentoComCliente[]
+  mediuns: Medium[]
 }
 
-export function AppointmentTable({ agendamentos }: AppointmentTableProps) {
+function MediumSelect({
+  agendamentoId,
+  mediumId,
+  mediuns,
+}: {
+  agendamentoId: string
+  mediumId: string | null
+  mediuns: Medium[]
+}) {
+  const [, startTransition] = useTransition()
+
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    startTransition(async () => {
+      await atribuirMedium(agendamentoId, e.target.value)
+    })
+  }
+
+  const ativos = mediuns.filter((m) => m.ativo)
+
+  return (
+    <select
+      value={mediumId ?? ''}
+      onChange={handleChange}
+      className="text-xs rounded border border-gray-200 px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-400 max-w-[140px]"
+    >
+      <option value="">— sem médium</option>
+      {ativos.map((m) => (
+        <option key={m.id} value={m.id}>
+          {m.nome}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+export function AppointmentTable({ agendamentos, mediuns }: AppointmentTableProps) {
   const [atualizando, setAtualizando] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 
@@ -43,6 +79,7 @@ export function AppointmentTable({ agendamentos }: AppointmentTableProps) {
             <th className="px-4 py-3 text-left">Consulente</th>
             <th className="px-4 py-3 text-left">Data & Horário</th>
             <th className="px-4 py-3 text-left">Status</th>
+            <th className="px-4 py-3 text-left">Médium</th>
             <th className="px-4 py-3 text-left">WhatsApp</th>
             <th className="px-4 py-3 text-right">Ações</th>
           </tr>
@@ -62,6 +99,13 @@ export function AppointmentTable({ agendamentos }: AppointmentTableProps) {
               </td>
               <td className="px-4 py-3">
                 <StatusBadge status={ag.status} />
+              </td>
+              <td className="px-4 py-3">
+                <MediumSelect
+                  agendamentoId={ag.id}
+                  mediumId={ag.medium_id}
+                  mediuns={mediuns}
+                />
               </td>
               <td className="px-4 py-3">
                 <a

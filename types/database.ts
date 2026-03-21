@@ -25,6 +25,16 @@ export interface Cliente {
   atualizado_em: string
 }
 
+export interface Medium {
+  id: string
+  nome: string
+  especialidade: string | null
+  telefone: string | null
+  token_acesso: string
+  ativo: boolean
+  criado_em: string
+}
+
 export interface GradeHorario {
   id: string
   dia_semana: number // 0=Dom, 1=Seg, ..., 6=Sáb
@@ -51,6 +61,7 @@ export interface Agendamento {
   status: AppointmentStatus
   notas: string | null
   motivo_cancelamento: string | null
+  medium_id: string | null
   token_publico: string
   lembrete_enviado: boolean
   criado_em: string

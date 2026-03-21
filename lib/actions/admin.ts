@@ -123,3 +123,83 @@ export async function toggleHorarioGrade(id: string, ativo: boolean) {
 
   revalidatePath('/admin/disponibilidade')
 }
+
+// Inserir novo slot na grade (ainda não existia no banco)
+export async function ativarNovoSlot(
+  diaSemana: number,
+  horaInicio: string,
+  horaFim: string
+): Promise<void> {
+  const supabase = createAdminClient()
+
+  await supabase.from('grade_horarios').insert({
+    dia_semana: diaSemana,
+    hora_inicio: horaInicio,
+    hora_fim: horaFim,
+    ativo: true,
+  })
+
+  revalidatePath('/admin/disponibilidade')
+}
+
+// ─── Médiuns ──────────────────────────────────────────────────────────────────
+
+const schemaMedium = z.object({
+  nome: z.string().min(2, 'Nome obrigatório'),
+  especialidade: z.string().optional(),
+  telefone: z.string().optional(),
+})
+
+export async function criarMedium(
+  _estado: { erro?: string } | null,
+  formData: FormData
+): Promise<{ erro?: string }> {
+  const dados = Object.fromEntries(formData.entries())
+  const resultado = schemaMedium.safeParse(dados)
+
+  if (!resultado.success) {
+    return { erro: resultado.error.errors[0].message }
+  }
+
+  const { nome, especialidade, telefone } = resultado.data
+  const supabase = createAdminClient()
+
+  const { error } = await supabase.from('mediuns').insert({
+    nome,
+    especialidade: especialidade || null,
+    telefone: telefone || null,
+  })
+
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/mediuns')
+  return {}
+}
+
+export async function toggleMediumAtivo(id: string, ativo: boolean): Promise<void> {
+  const supabase = createAdminClient()
+
+  await supabase
+    .from('mediuns')
+    .update({ ativo })
+    .eq('id', id)
+
+  revalidatePath('/admin/mediuns')
+}
+
+export async function atribuirMedium(
+  agendamentoId: string,
+  mediumId: string
+): Promise<{ erro?: string }> {
+  const supabase = createAdminClient()
+
+  const { error } = await supabase
+    .from('agendamentos')
+    .update({ medium_id: mediumId || null })
+    .eq('id', agendamentoId)
+
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/agendamentos')
+  return {}
+}

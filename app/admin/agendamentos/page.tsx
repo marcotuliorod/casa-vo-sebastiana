@@ -2,6 +2,7 @@
 import { AppointmentTable } from '@/components/admin/AppointmentTable'
 import { FiltrosAgendamentos } from './FiltrosAgendamentos'
 import { listarAgendamentos } from '@/lib/queries/appointments'
+import { listarMediuns } from '@/lib/queries/mediuns'
 import type { AppointmentStatus } from '@/types/database'
 
 export const metadata = {
@@ -18,11 +19,14 @@ interface Props {
 
 export default async function AgendamentosPage({ searchParams }: Props) {
   const params = await searchParams
-  const agendamentos = await listarAgendamentos({
-    data: params.data,
-    status: params.status,
-    busca: params.busca,
-  })
+  const [agendamentos, mediuns] = await Promise.all([
+    listarAgendamentos({
+      data: params.data,
+      status: params.status,
+      busca: params.busca,
+    }),
+    listarMediuns(),
+  ])
 
   return (
     <div className="space-y-5">
@@ -35,7 +39,7 @@ export default async function AgendamentosPage({ searchParams }: Props) {
 
       <FiltrosAgendamentos />
 
-      <AppointmentTable agendamentos={agendamentos} />
+      <AppointmentTable agendamentos={agendamentos} mediuns={mediuns} />
     </div>
   )
 }

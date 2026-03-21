@@ -8,6 +8,7 @@ import {
   Calendar,
   Clock,
   Users,
+  Sparkles,
   LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -18,6 +19,7 @@ const navItems = [
   { href: '/admin/agendamentos', label: 'Agendamentos', icone: Calendar, exact: false },
   { href: '/admin/disponibilidade', label: 'Disponibilidade', icone: Clock, exact: false },
   { href: '/admin/consulentes', label: 'Consulentes', icone: Users, exact: false },
+  { href: '/admin/mediuns', label: 'Médiuns', icone: Sparkles, exact: false },
 ]
 
 export function AdminNav() {
