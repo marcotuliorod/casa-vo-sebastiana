@@ -11,8 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "load:smoke":  "k6 run load-tests/smoke.js",
-    "load:test":   "k6 run load-tests/load.js",
+    "load:smoke": "k6 run load-tests/smoke.js",
+    "load:test": "k6 run load-tests/load.js",
     "load:stress": "k6 run load-tests/stress.js"
   },
   "dependencies": {
@@ -32,7 +32,7 @@
     "date-fns": "^3.6.0",
     "date-fns-tz": "^3.1.3",
     "lucide-react": "^0.408.0",
-    "next": "14.2.5",
+    "next": "^14.2.35",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",

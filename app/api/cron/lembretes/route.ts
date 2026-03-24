@@ -10,11 +10,21 @@ import { formatInTimeZone } from 'date-fns-tz'
 import { parseISO, addHours } from 'date-fns'
 
 export async function GET(request: NextRequest) {
-  // Verificar autorização do cron (segurança básica)
+  // Verificar autorização do cron
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
 
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret) {
+    console.error('[Cron lembretes] CRON_SECRET não configurado')
+    return NextResponse.json({ erro: 'Configuração inválida' }, { status: 500 })
+  }
+
+  if (cronSecret.length < 32) {
+    console.error('[Cron lembretes] CRON_SECRET muito curto (mínimo 32 caracteres)')
+    return NextResponse.json({ erro: 'Configuração inválida' }, { status: 500 })
+  }
+
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ erro: 'Não autorizado' }, { status: 401 })
   }
 
@@ -90,7 +100,7 @@ export async function GET(request: NextRequest) {
       processados++
     } else {
       console.error(
-        `[Cron lembretes] Falha ao enviar para ${ag.clientes.telefone}:`,
+        `[Cron lembretes] Falha ao enviar para ***${ag.clientes.telefone.slice(-4)}:`,
         resultado.erro
       )
       falhas++
@@ -123,7 +133,7 @@ export async function GET(request: NextRequest) {
       const momentoLembrete = addHours(dataHoraEvento, -evento.lembrete_horas)
 
       // Só envia se já passou do momento do lembrete (e ainda não passou o evento)
-      if (agora < momentoLembrete || agora >= dataHoraEvento) continue
+      if (agora < momentoLembrete || agora > dataHoraEvento) continue
 
       const mensagem = mensagemLembreteEvento({
         nomeCliente: ag.clientes.nome,

@@ -86,8 +86,12 @@ export async function listarAgendamentos(filtros?: {
   }
 
   if (filtros?.busca) {
+    const buscaSegura = filtros.busca
+      .slice(0, 50)
+      .replace(/%/g, '\\%')
+      .replace(/_/g, '\\_')
     query = query.or(
-      `nome.ilike.%${filtros.busca}%,telefone.ilike.%${filtros.busca}%`,
+      `nome.ilike.%${buscaSegura}%,telefone.ilike.%${buscaSegura}%`,
       { foreignTable: 'clientes' }
     )
   }

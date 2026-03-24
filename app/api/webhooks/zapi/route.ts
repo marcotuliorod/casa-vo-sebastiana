@@ -23,11 +23,16 @@ const mapearStatus = (status: string): string => {
 }
 
 export async function POST(request: NextRequest) {
-  // Verificar Client-Token do Z-API (opcional mas recomendado)
-  const clientToken = request.headers.get('client-token')
+  // Verificar Client-Token do Z-API — obrigatório para prevenir requisições forjadas
   const zapiClientToken = process.env.ZAPI_CLIENT_TOKEN
 
-  if (zapiClientToken && clientToken !== zapiClientToken) {
+  if (!zapiClientToken) {
+    console.error('[Z-API Webhook] ZAPI_CLIENT_TOKEN não configurado — rejeitando requisição')
+    return NextResponse.json({ erro: 'Serviço não configurado' }, { status: 500 })
+  }
+
+  const clientToken = request.headers.get('client-token')
+  if (clientToken !== zapiClientToken) {
     return NextResponse.json({ erro: 'Token inválido' }, { status: 401 })
   }
 

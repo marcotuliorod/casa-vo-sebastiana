@@ -10,11 +10,22 @@ import { mensagemAtribuicaoMedium, mensagemCancelamento } from '@/lib/whatsapp/t
 import { normalizarTelefone } from '@/lib/utils/phone'
 import type { AppointmentStatus } from '@/types/database'
 
-// Verifica se há um usuário autenticado — chamado no topo de cada action admin
+// Verifica se há um usuário autenticado e com email autorizado
 async function verificarAdmin(): Promise<string | null> {
   const supabase = await createServerSessionClient()
   const { data: { user } } = await supabase.auth.getUser()
-  return user ? null : 'Não autorizado.'
+  if (!user) return 'Não autorizado.'
+
+  const adminEmails = process.env.ADMIN_EMAILS
+    ?.split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean) ?? []
+
+  if (adminEmails.length > 0 && !adminEmails.includes((user.email ?? '').toLowerCase())) {
+    return 'Não autorizado.'
+  }
+
+  return null
 }
 
 // Atualizar status de um agendamento
@@ -137,6 +148,13 @@ export async function atualizarGradeHorarios(
 ): Promise<{ erro?: string }> {
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
+
+  const horaRegex = /^\d{2}:\d{2}$/
+  for (const h of horarios) {
+    if (!horaRegex.test(h.hora_inicio) || !horaRegex.test(h.hora_fim)) {
+      return { erro: 'Formato de hora inválido.' }
+    }
+  }
 
   const supabase = createAdminClient()
 
