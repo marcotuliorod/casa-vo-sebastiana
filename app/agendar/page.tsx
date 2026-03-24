@@ -1,4 +1,6 @@
 // Passo 1: Escolha a data
+import Link from 'next/link'
+import { CalendarRange, ChevronRight } from 'lucide-react'
 import { ProgressSteps } from '@/components/booking/ProgressSteps'
 import { CalendarioAgendamento } from './CalendarioAgendamento'
 import { getDatasBlockeadas, getDiasAtivos, getDatasComSlotsDisponiveis } from '@/lib/queries/availability'
@@ -26,6 +28,19 @@ export default async function AgendarPage() {
 
   return (
     <div>
+      {/* Banner de acesso a eventos */}
+      <Link
+        href="/agendar/eventos"
+        className="flex items-center gap-3 rounded-xl border bg-white p-4 mb-4 hover:bg-purple-50 transition-colors shadow-sm"
+      >
+        <CalendarRange className="h-5 w-5 text-purple-600 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-800 text-sm">Participar de um evento</p>
+          <p className="text-xs text-gray-500">Ver eventos abertos para inscrição</p>
+        </div>
+        <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
+      </Link>
+
       <ProgressSteps passoAtual={1} />
 
       <div className="rounded-2xl bg-white p-6 shadow-sm border">

@@ -4,8 +4,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
-import { mensagemLembrete24h } from '@/lib/whatsapp/templates'
+import { mensagemLembrete24h, mensagemLembreteEvento } from '@/lib/whatsapp/templates'
 import { amanha } from '@/lib/utils/date'
+import { formatInTimeZone } from 'date-fns-tz'
+import { parseISO, addHours } from 'date-fns'
 
 export async function GET(request: NextRequest) {
   // Verificar autorização do cron (segurança básica)
@@ -95,6 +97,71 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // ─── Lembretes de Eventos (lembrete_horas por evento) ────────────────────────
+
+  let eventosProcessados = 0
+  let eventosFalhas = 0
+
+  // Busca agendamentos de eventos confirmados sem lembrete, ordenando por data/hora
+  const { data: agEventos } = await supabase
+    .from('agendamentos')
+    .select('*, clientes(*), eventos(titulo, hora_inicio, lembrete_horas)')
+    .not('evento_id', 'is', null)
+    .eq('status', 'confirmado')
+    .eq('lembrete_enviado', false)
+    .gte('data_agendada', formatInTimeZone(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd'))
+
+  if (agEventos?.length && provedor) {
+    const agora = new Date()
+
+    for (const ag of agEventos) {
+      const evento = ag.eventos as { titulo: string; hora_inicio: string; lembrete_horas: number } | null
+      if (!evento) continue
+
+      // Calcula quando deve enviar: data_agendada + hora_inicio - lembrete_horas
+      const dataHoraEvento = parseISO(`${ag.data_agendada}T${ag.hora_inicio}`)
+      const momentoLembrete = addHours(dataHoraEvento, -evento.lembrete_horas)
+
+      // Só envia se já passou do momento do lembrete (e ainda não passou o evento)
+      if (agora < momentoLembrete || agora >= dataHoraEvento) continue
+
+      const mensagem = mensagemLembreteEvento({
+        nomeCliente: ag.clientes.nome,
+        tituloEvento: evento.titulo,
+        dataEvento: ag.data_agendada,
+        horaInicio: ag.hora_inicio.slice(0, 5),
+        tokenPublico: ag.token_publico,
+        baseUrl,
+      })
+
+      const resultado = await provedor.enviarMensagem({
+        para: ag.clientes.telefone,
+        corpo: mensagem,
+      })
+
+      await supabase.from('logs_whatsapp').insert({
+        agendamento_id: ag.id,
+        evento: 'lembrete_24h',
+        provedor: provedor.nome,
+        para_telefone: ag.clientes.telefone,
+        mensagem,
+        id_mensagem_provedor: resultado.idMensagemProvedor ?? null,
+        status: resultado.sucesso ? 'enviado' : 'falhou',
+        mensagem_erro: resultado.erro ?? null,
+      })
+
+      if (resultado.sucesso) {
+        await supabase
+          .from('agendamentos')
+          .update({ lembrete_enviado: true })
+          .eq('id', ag.id)
+        eventosProcessados++
+      } else {
+        eventosFalhas++
+      }
+    }
+  }
+
   // US-16: Processar fila de retry de mensagens com falha
   let retryProcessados = 0
   let retryFalhas = 0
@@ -147,10 +214,8 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    processados,
-    falhas,
-    total: agendamentos.length,
-    data_alvo: dataAmanha,
+    horario: { processados, falhas, total: agendamentos.length, data_alvo: dataAmanha },
+    eventos: { processados: eventosProcessados, falhas: eventosFalhas, total: agEventos?.length ?? 0 },
     retry: { processados: retryProcessados, falhas: retryFalhas, total: fila?.length ?? 0 },
   })
 }

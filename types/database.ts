@@ -62,6 +62,7 @@ export interface Agendamento {
   notas: string | null
   motivo_cancelamento: string | null
   medium_id: string | null
+  evento_id: string | null
   token_publico: string
   lembrete_enviado: boolean
   criado_em: string
@@ -86,7 +87,35 @@ export interface LogWhatsapp {
   atualizado_em: string
 }
 
-// Tipos para o fluxo de agendamento
+// ─── Eventos ──────────────────────────────────────────────────
+
+export type RecorrenciaTipo = 'nenhuma' | 'semanal' | 'quinzenal' | 'mensal'
+
+export interface Evento {
+  id: string
+  titulo: string
+  descricao: string | null
+  data_inicio: string            // 'YYYY-MM-DD'
+  hora_inicio: string            // 'HH:MM'
+  hora_fim: string               // 'HH:MM'
+  capacidade: number
+  recorrencia: RecorrenciaTipo
+  data_fim_recorrencia: string | null  // 'YYYY-MM-DD'
+  lembrete_horas: number
+  ativo: boolean
+  criado_em: string
+  atualizado_em: string
+}
+
+// Uma ocorrência concreta de um evento numa data específica
+export interface OcorrenciaEvento {
+  evento: Evento
+  data: string           // 'YYYY-MM-DD'
+  inscritos: number
+  vagasRestantes: number
+}
+
+// ─── Tipos para o fluxo de agendamento ───────────────────────
 export interface SlotDisponivel {
   hora_inicio: string
   hora_fim: string

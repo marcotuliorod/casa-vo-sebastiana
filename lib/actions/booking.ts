@@ -7,7 +7,9 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getSlotsDisponiveis } from '@/lib/queries/availability'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
-import { mensagemConfirmacao, mensagemCancelamento, mensagemNovoAgendamentoAdmin, mensagemCancelamentoAdmin } from '@/lib/whatsapp/templates'
+import { mensagemConfirmacao, mensagemCancelamento, mensagemNovoAgendamentoAdmin, mensagemCancelamentoAdmin, mensagemConfirmacaoEvento } from '@/lib/whatsapp/templates'
+import { getEvento, contarInscritosOcorrencia } from '@/lib/queries/eventos'
+import { ehOcorrenciaValida } from '@/lib/utils/recorrencia'
 import { normalizarTelefone } from '@/lib/utils/phone'
 
 // Schema de validação para criação de agendamento
@@ -200,7 +202,164 @@ export async function criarAgendamento(
   redirect(`/agendamento/${agendamento.token_publico}`)
 }
 
-// Cancelar agendamento pelo token público
+// ─── Inscrição em Evento ──────────────────────────────────────
+
+const schemaInscreverEvento = z.object({
+  evento_id: z.string().uuid('Evento inválido'),
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
+  nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
+  telefone: z.string().min(10, 'Telefone inválido'),
+  email: z.string().email('Email inválido').optional().or(z.literal('')),
+  notas: z.string().max(500).optional(),
+})
+
+export async function inscreverEmEvento(
+  _estado: EstadoFormAgendamento,
+  formData: FormData
+): Promise<EstadoFormAgendamento> {
+  const dados = Object.fromEntries(formData.entries())
+  const resultado = schemaInscreverEvento.safeParse(dados)
+
+  if (!resultado.success) {
+    const primeiroErro = resultado.error.errors[0]
+    return { erro: primeiroErro.message, campo: String(primeiroErro.path[0]) }
+  }
+
+  const { evento_id, data, nome, telefone, email, notas } = resultado.data
+  const telefoneNormalizado = normalizarTelefone(telefone)
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
+
+  const supabase = createAdminClient()
+
+  // 1. Verificar evento ativo
+  const evento = await getEvento(evento_id)
+  if (!evento || !evento.ativo) {
+    return { erro: 'Este evento não está disponível.' }
+  }
+
+  // 2. Verificar que a data é uma ocorrência válida do evento
+  const ocorrenciaValida = ehOcorrenciaValida({
+    data,
+    data_inicio: evento.data_inicio,
+    recorrencia: evento.recorrencia,
+    data_fim_recorrencia: evento.data_fim_recorrencia,
+  })
+  if (!ocorrenciaValida) {
+    return { erro: 'Data inválida para este evento.' }
+  }
+
+  // 3. Verificar capacidade (verificação pessimista antes do insert)
+  const inscritos = await contarInscritosOcorrencia(evento_id, data)
+  if (inscritos >= evento.capacidade) {
+    return { erro: 'Não há mais vagas disponíveis para esta data.' }
+  }
+
+  // 4. Upsert do cliente (por telefone)
+  const { data: cliente, error: erroCliente } = await supabase
+    .from('clientes')
+    .upsert(
+      { nome, telefone: telefoneNormalizado, email: email || null },
+      { onConflict: 'telefone', ignoreDuplicates: false }
+    )
+    .select()
+    .single()
+
+  if (erroCliente || !cliente) {
+    return { erro: 'Erro ao salvar seus dados. Tente novamente.' }
+  }
+
+  // 5. Criar agendamento vinculado ao evento
+  const { data: agendamento, error: erroAg } = await supabase
+    .from('agendamentos')
+    .insert({
+      cliente_id: cliente.id,
+      evento_id,
+      data_agendada: data,
+      hora_inicio: evento.hora_inicio,
+      hora_fim: evento.hora_fim,
+      status: 'pendente',
+      notas: notas || null,
+    })
+    .select()
+    .single()
+
+  if (erroAg) {
+    return { erro: 'Erro ao registrar inscrição. Tente novamente.' }
+  }
+
+  // 6. Enviar confirmação via WhatsApp
+  const mensagemWpp = mensagemConfirmacaoEvento({
+    nomeCliente: nome,
+    tituloEvento: evento.titulo,
+    dataEvento: data,
+    horaInicio: evento.hora_inicio.slice(0, 5),
+    horaFim: evento.hora_fim.slice(0, 5),
+    tokenPublico: agendamento.token_publico,
+    baseUrl,
+  })
+
+  try {
+    const provedor = getProvedorWhatsApp()
+    const resultadoWpp = await provedor.enviarMensagem({
+      para: telefoneNormalizado,
+      corpo: mensagemWpp,
+    })
+
+    await supabase.from('logs_whatsapp').insert({
+      agendamento_id: agendamento.id,
+      evento: 'confirmacao_agendamento',
+      provedor: provedor.nome,
+      para_telefone: telefoneNormalizado,
+      mensagem: mensagemWpp,
+      id_mensagem_provedor: resultadoWpp.idMensagemProvedor ?? null,
+      status: resultadoWpp.sucesso ? 'enviado' : 'falhou',
+      mensagem_erro: resultadoWpp.erro ?? null,
+    })
+
+    if (!resultadoWpp.sucesso) {
+      await supabase.from('whatsapp_queue').insert({
+        agendamento_id: agendamento.id,
+        telefone: telefoneNormalizado,
+        mensagem: mensagemWpp,
+        tipo: 'confirmacao',
+      })
+    }
+  } catch (err) {
+    console.error('[WhatsApp] Falha ao enviar confirmação de evento:', err)
+    await supabase.from('whatsapp_queue').insert({
+      agendamento_id: agendamento.id,
+      telefone: telefoneNormalizado,
+      mensagem: mensagemWpp,
+      tipo: 'confirmacao',
+    }).then(({ error }) => {
+      if (error) console.error('[WhatsApp] Falha ao enfileirar retry:', error)
+    })
+  }
+
+  // 7. Notificar admin
+  const adminWhatsApp = process.env.ADMIN_WHATSAPP
+  if (adminWhatsApp) {
+    try {
+      const provedor = getProvedorWhatsApp()
+      await provedor.enviarMensagem({
+        para: adminWhatsApp,
+        corpo: mensagemNovoAgendamentoAdmin({
+          nomeCliente: nome,
+          telefoneCliente: telefoneNormalizado,
+          dataAgendada: data,
+          horaInicio: evento.hora_inicio.slice(0, 5),
+          horaFim: evento.hora_fim.slice(0, 5),
+        }),
+      })
+    } catch (err) {
+      console.error('[WhatsApp] Falha ao notificar admin sobre evento:', err)
+    }
+  }
+
+  redirect(`/agendamento/${agendamento.token_publico}`)
+}
+
+// ─── Cancelar agendamento pelo token público ──────────────────
 export async function cancelarAgendamento(token: string): Promise<{ erro?: string }> {
   const supabase = createAdminClient()
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'

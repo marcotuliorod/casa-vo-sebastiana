@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils/cn'
 import {
   LayoutDashboard,
   Calendar,
+  CalendarRange,
   Clock,
   Users,
   Sparkles,
@@ -18,6 +19,7 @@ const navItems = [
   { href: '/admin', label: 'Dashboard', icone: LayoutDashboard, exact: true },
   { href: '/admin/agendamentos', label: 'Agendamentos', icone: Calendar, exact: false },
   { href: '/admin/disponibilidade', label: 'Disponibilidade', icone: Clock, exact: false },
+  { href: '/admin/eventos', label: 'Eventos', icone: CalendarRange, exact: false },
   { href: '/admin/consulentes', label: 'Consulentes', icone: Users, exact: false },
   { href: '/admin/mediuns', label: 'Médiuns', icone: Sparkles, exact: false },
 ]

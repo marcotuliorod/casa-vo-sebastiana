@@ -120,6 +120,67 @@ export function mensagemAtribuicaoMedium(info: InfoAtribuicaoMedium): string {
   ].join('\n')
 }
 
+// ─── Confirmação de Inscrição em Evento ───────────────────────
+
+interface InfoConfirmacaoEvento {
+  nomeCliente: string
+  tituloEvento: string
+  dataEvento: string   // 'YYYY-MM-DD'
+  horaInicio: string   // 'HH:MM'
+  horaFim: string      // 'HH:MM'
+  tokenPublico: string
+  baseUrl: string
+}
+
+export function mensagemConfirmacaoEvento(info: InfoConfirmacaoEvento): string {
+  const data = parseISO(info.dataEvento)
+  const dataFormatada = format(data, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })
+  const linkInscricao = `${info.baseUrl}/agendamento/${info.tokenPublico}`
+
+  return [
+    `Olá, ${info.nomeCliente}! ✨`,
+    ``,
+    `Sua inscrição no evento da *Casa de Vó Sebastiana* foi recebida!`,
+    ``,
+    `🎉 *${info.tituloEvento}*`,
+    `📅 ${dataFormatada}`,
+    `🕐 ${info.horaInicio} — ${info.horaFim}`,
+    ``,
+    `Você pode acompanhar ou cancelar sua inscrição aqui:`,
+    linkInscricao,
+    ``,
+    `Que a energia do Orixá te abençoe! 🙏`,
+  ].join('\n')
+}
+
+// ─── Lembrete de Evento ───────────────────────────────────────
+
+interface InfoLembreteEvento {
+  nomeCliente: string
+  tituloEvento: string
+  dataEvento: string
+  horaInicio: string
+  tokenPublico: string
+  baseUrl: string
+}
+
+export function mensagemLembreteEvento(info: InfoLembreteEvento): string {
+  const linkInscricao = `${info.baseUrl}/agendamento/${info.tokenPublico}`
+
+  return [
+    `Olá, ${info.nomeCliente}! 🌟`,
+    ``,
+    `Lembrando que você está inscrito no evento *${info.tituloEvento}* na *Casa de Vó Sebastiana*.`,
+    ``,
+    `📅 ${format(parseISO(info.dataEvento), "dd/MM/yyyy", { locale: ptBR })} às ${info.horaInicio}`,
+    ``,
+    `Nos vemos em breve! 🌿`,
+    ``,
+    `Precisando cancelar:`,
+    linkInscricao,
+  ].join('\n')
+}
+
 // ─── Cancelamento ─────────────────────────────────────────────
 
 export function mensagemCancelamento(info: InfoAgendamento): string {

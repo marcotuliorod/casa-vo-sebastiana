@@ -46,7 +46,7 @@ export async function atualizarStatusAgendamento(
       if (ag) {
         const provedor = getProvedorWhatsApp()
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-        const agTyped = ag as { data_agendada: string; hora_inicio: string; hora_fim: string; token_publico: string; clientes: { nome: string; telefone: string } }
+        const agTyped = ag as unknown as { data_agendada: string; hora_inicio: string; hora_fim: string; token_publico: string; clientes: { nome: string; telefone: string } }
         await provedor.enviarMensagem({
           para: normalizarTelefone(agTyped.clientes.telefone),
           corpo: mensagemCancelamento({
@@ -307,7 +307,7 @@ export async function atribuirMedium(
       if (ag && telefone) {
         const provedor = getProvedorWhatsApp()
         const telefoneNormalizado = normalizarTelefone(telefone)
-        const agTyped = ag as { data_agendada: string; hora_inicio: string; hora_fim: string; clientes: { nome: string } }
+        const agTyped = ag as unknown as { data_agendada: string; hora_inicio: string; hora_fim: string; clientes: { nome: string } }
         await provedor.enviarMensagem({
           para: telefoneNormalizado,
           corpo: mensagemAtribuicaoMedium({
@@ -326,5 +326,168 @@ export async function atribuirMedium(
 
   revalidatePath('/admin/agendamentos')
   revalidatePath('/admin') // BUG-07: sincroniza Dashboard após atribuição de médium
+  return {}
+}
+
+// ─── Eventos ──────────────────────────────────────────────────────────────────
+
+export type EstadoFormEvento = { erro?: string; campo?: string } | null
+
+const schemaEvento = z.object({
+  titulo: z.string().min(3, 'Título deve ter pelo menos 3 caracteres'),
+  descricao: z.string().max(1000).optional().or(z.literal('')),
+  data_inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
+  hora_inicio: z.string().regex(/^\d{2}:\d{2}$/, 'Hora de início inválida'),
+  hora_fim: z.string().regex(/^\d{2}:\d{2}$/, 'Hora de fim inválida'),
+  capacidade: z.coerce
+    .number({ invalid_type_error: 'Capacidade inválida' })
+    .int()
+    .min(1, 'Capacidade mínima: 1')
+    .max(500, 'Capacidade máxima: 500'),
+  recorrencia: z.enum(['nenhuma', 'semanal', 'quinzenal', 'mensal'], {
+    invalid_type_error: 'Recorrência inválida',
+  }),
+  data_fim_recorrencia: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .or(z.literal('')),
+  lembrete_horas: z.coerce
+    .number({ invalid_type_error: 'Lembrete inválido' })
+    .int()
+    .min(1)
+    .max(168)
+    .default(24),
+})
+
+export async function criarEvento(
+  _estado: EstadoFormEvento,
+  formData: FormData
+): Promise<EstadoFormEvento> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
+  const dados = Object.fromEntries(formData.entries())
+  const resultado = schemaEvento.safeParse(dados)
+  if (!resultado.success) {
+    const primeiro = resultado.error.errors[0]
+    return { erro: primeiro.message, campo: String(primeiro.path[0]) }
+  }
+
+  const {
+    titulo, descricao, data_inicio, hora_inicio, hora_fim,
+    capacidade, recorrencia, data_fim_recorrencia, lembrete_horas,
+  } = resultado.data
+
+  if (hora_fim <= hora_inicio) {
+    return { erro: 'Hora de fim deve ser posterior à hora de início.', campo: 'hora_fim' }
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('eventos').insert({
+    titulo,
+    descricao: descricao || null,
+    data_inicio,
+    hora_inicio,
+    hora_fim,
+    capacidade,
+    recorrencia,
+    data_fim_recorrencia: data_fim_recorrencia || null,
+    lembrete_horas,
+  })
+
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/eventos')
+  revalidatePath('/agendar/eventos')
+  return null
+}
+
+export async function editarEvento(
+  id: string,
+  _estado: EstadoFormEvento,
+  formData: FormData
+): Promise<EstadoFormEvento> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
+  const dados = Object.fromEntries(formData.entries())
+  const resultado = schemaEvento.safeParse(dados)
+  if (!resultado.success) {
+    const primeiro = resultado.error.errors[0]
+    return { erro: primeiro.message, campo: String(primeiro.path[0]) }
+  }
+
+  const {
+    titulo, descricao, data_inicio, hora_inicio, hora_fim,
+    capacidade, recorrencia, data_fim_recorrencia, lembrete_horas,
+  } = resultado.data
+
+  if (hora_fim <= hora_inicio) {
+    return { erro: 'Hora de fim deve ser posterior à hora de início.', campo: 'hora_fim' }
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('eventos')
+    .update({
+      titulo,
+      descricao: descricao || null,
+      data_inicio,
+      hora_inicio,
+      hora_fim,
+      capacidade,
+      recorrencia,
+      data_fim_recorrencia: data_fim_recorrencia || null,
+      lembrete_horas,
+    })
+    .eq('id', id)
+
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/eventos')
+  revalidatePath('/agendar/eventos')
+  return null
+}
+
+export async function toggleEventoAtivo(
+  id: string,
+  ativo: boolean
+): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('eventos').update({ ativo }).eq('id', id)
+
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/eventos')
+  revalidatePath('/agendar/eventos')
+  return {}
+}
+
+export async function excluirEvento(id: string): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
+  const supabase = createAdminClient()
+
+  // Bloqueia exclusão se houver inscrições ativas
+  const { count } = await supabase
+    .from('agendamentos')
+    .select('*', { count: 'exact', head: true })
+    .eq('evento_id', id)
+    .in('status', ['pendente', 'confirmado'])
+
+  if ((count ?? 0) > 0) {
+    return { erro: `Não é possível excluir: há ${count} inscrição(ões) ativa(s) neste evento. Cancele-as primeiro.` }
+  }
+
+  const { error } = await supabase.from('eventos').delete().eq('id', id)
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/eventos')
+  revalidatePath('/agendar/eventos')
   return {}
 }
