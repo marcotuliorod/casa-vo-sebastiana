@@ -84,6 +84,7 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
   const [telefone, handleTelefoneInput] = usePhoneMask()
   const [email, setEmail] = useState('')
   const [notas, setNotas] = useState('')
+  const NOTAS_MAX = 500
 
   return (
     <form action={action} className="space-y-5">
@@ -167,16 +168,24 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="notas">
-          Observações{' '}
-          <span className="font-normal text-gray-500 text-xs">(opcional)</span>
-        </Label>
+        <div className="flex items-baseline justify-between">
+          <Label htmlFor="notas">
+            Observações{' '}
+            <span className="font-normal text-gray-500 text-xs">(opcional)</span>
+          </Label>
+          <span className={cn(
+            'text-xs tabular-nums',
+            notas.length > NOTAS_MAX * 0.9 ? 'text-amber-600' : 'text-gray-400'
+          )}>
+            {notas.length}/{NOTAS_MAX}
+          </span>
+        </div>
         <Textarea
           id="notas"
           name="notas"
           placeholder="Algo que queira nos informar antes do atendimento..."
           rows={3}
-          maxLength={500}
+          maxLength={NOTAS_MAX}
           value={notas}
           onChange={(e) => setNotas(e.target.value)}
         />

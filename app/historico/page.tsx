@@ -36,7 +36,7 @@ export default async function HistoricoPage({ searchParams }: Props) {
     <div className="min-h-screen bg-gradient-to-b from-purple-50 via-background to-background">
       <div className="mx-auto max-w-md px-4 py-10">
         <div className="text-center mb-8">
-          <Logo size="sm" />
+          <Logo size="sm" href="/" />
           <h1 className="mt-4 text-xl font-serif font-semibold text-purple-900">
             Meus Agendamentos
           </h1>

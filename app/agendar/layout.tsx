@@ -5,7 +5,7 @@ export default function AgendarLayout({ children }: { children: React.ReactNode 
     <div className="min-h-screen bg-gradient-to-b from-purple-50 via-background to-background">
       {/* Header */}
       <header className="pt-8 pb-4 text-center">
-        <Logo size="md" />
+        <Logo size="md" href="/" />
       </header>
 
       {/* Conteúdo principal */}

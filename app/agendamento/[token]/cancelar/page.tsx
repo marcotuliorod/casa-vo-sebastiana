@@ -16,7 +16,7 @@ interface Props {
 export default function CancelarPage({ params }: Props) {
   const router = useRouter()
   const [erro, setErro] = useState<string | null>(null)
-  const [, startTransition] = useTransition()
+  const [isPending, startTransition] = useTransition()
   const [cancelado, setCancelado] = useState(false)
 
   const handleCancelar = async () => {
@@ -36,7 +36,7 @@ export default function CancelarPage({ params }: Props) {
     <div className="min-h-screen bg-gradient-to-b from-purple-50 via-background to-background">
       <div className="mx-auto max-w-md px-4 py-10">
         <div className="text-center mb-8">
-          <Logo size="sm" />
+          <Logo size="sm" href="/" />
         </div>
 
         <Card>
@@ -70,6 +70,7 @@ export default function CancelarPage({ params }: Props) {
                   <Button
                     variant="outline"
                     className="flex-1"
+                    disabled={isPending}
                     asChild
                   >
                     <Link href="..">Voltar</Link>
@@ -78,8 +79,16 @@ export default function CancelarPage({ params }: Props) {
                     variant="destructive"
                     className="flex-1"
                     onClick={handleCancelar}
+                    disabled={isPending}
                   >
-                    Sim, cancelar
+                    {isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Cancelando...
+                      </>
+                    ) : (
+                      'Sim, cancelar'
+                    )}
                   </Button>
                 </div>
               </>

@@ -34,7 +34,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
     <div className="min-h-screen bg-gradient-to-b from-purple-50 via-background to-background">
       <div className="mx-auto max-w-md px-4 py-10">
         <div className="text-center mb-8">
-          <Logo size="sm" />
+          <Logo size="sm" href="/" />
         </div>
 
         {/* Banner: aguardando confirmação */}
@@ -143,7 +143,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
           )}
         </div>
 
-        {/* US-24: link de volta ao histórico quando navegou por lá */}
+        {/* Link de volta ao histórico quando navegou por lá */}
         {from === 'historico' && (
           <div className="mt-4 text-center">
             <Link href="/historico" className="text-xs text-purple-600 hover:underline">
@@ -152,7 +152,14 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
           </div>
         )}
 
-        <p className="mt-8 text-center text-xs text-gray-400">
+        {/* Link de volta à home sempre visível */}
+        <div className="mt-3 text-center">
+          <Link href="/" className="text-xs text-gray-400 hover:text-purple-600 hover:underline transition-colors">
+            ← Página inicial
+          </Link>
+        </div>
+
+        <p className="mt-6 text-center text-xs text-gray-400">
           🌿 Casa de Vó Sebastiana — Umbanda & Atendimento Espiritual
         </p>
       </div>

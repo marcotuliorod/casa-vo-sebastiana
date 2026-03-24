@@ -5,6 +5,7 @@ import { inscreverEmEvento, type EstadoFormAgendamento } from '@/lib/actions/boo
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Loader2 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import type { OcorrenciaEvento } from '@/types/database'
@@ -20,8 +21,15 @@ interface EventoInscricaoFormProps {
 function BotaoSubmit() {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" disabled={pending} className="w-full">
-      {pending ? 'Registrando inscrição...' : 'Confirmar inscrição'}
+    <Button type="submit" disabled={pending} className="w-full bg-purple-700 hover:bg-purple-800">
+      {pending ? (
+        <>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Registrando inscrição...
+        </>
+      ) : (
+        '✨ Confirmar inscrição'
+      )}
     </Button>
   )
 }
