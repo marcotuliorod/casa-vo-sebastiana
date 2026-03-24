@@ -1,4 +1,6 @@
 // Lista de consulentes com histórico de agendamentos
+export const dynamic = 'force-dynamic'
+
 import { createAdminClient } from '@/lib/supabase/server'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
