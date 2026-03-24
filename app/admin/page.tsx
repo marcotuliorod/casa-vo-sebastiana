@@ -2,8 +2,8 @@
 import { formatInTimeZone } from 'date-fns-tz'
 import { StatCard } from '@/components/admin/StatCard'
 import { AppointmentTable } from '@/components/admin/AppointmentTable'
-import { getEstatisticas } from '@/lib/queries/appointments'
-import { listarAgendamentos } from '@/lib/queries/appointments'
+import { getEstatisticas, listarAgendamentos } from '@/lib/queries/appointments'
+import { listarMediuns } from '@/lib/queries/mediuns'
 import { Calendar, AlertCircle, Clock, TrendingUp } from 'lucide-react'
 
 export const metadata = {
@@ -11,9 +11,10 @@ export const metadata = {
 }
 
 export default async function AdminDashboard() {
-  const [stats, agendamentosHoje] = await Promise.all([
+  const [stats, agendamentosHoje, mediuns] = await Promise.all([
     getEstatisticas(),
     listarAgendamentos({ data: formatInTimeZone(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd') }),
+    listarMediuns(),
   ])
 
   return (
@@ -64,7 +65,7 @@ export default async function AdminDashboard() {
         <h2 className="text-lg font-semibold text-gray-800 mb-3">
           Agendamentos de hoje
         </h2>
-        <AppointmentTable agendamentos={agendamentosHoje} />
+        <AppointmentTable agendamentos={agendamentosHoje} mediuns={mediuns} />
       </div>
     </div>
   )
