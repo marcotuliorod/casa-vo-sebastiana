@@ -12,8 +12,11 @@ export const metadata = {
 interface Props {
   searchParams: Promise<{
     data?: string
+    periodo?: 'hoje' | '7dias' | 'semana' | 'mes'
     status?: AppointmentStatus
     busca?: string
+    medium_id?: string
+    tipo?: 'evento' | 'horario'
   }>
 }
 
@@ -22,8 +25,11 @@ export default async function AgendamentosPage({ searchParams }: Props) {
   const [agendamentos, mediuns] = await Promise.all([
     listarAgendamentos({
       data: params.data,
+      periodo: params.periodo,
       status: params.status,
       busca: params.busca,
+      medium_id: params.medium_id,
+      tipo: params.tipo,
     }),
     listarMediuns(),
   ])
@@ -37,7 +43,7 @@ export default async function AgendamentosPage({ searchParams }: Props) {
         </p>
       </div>
 
-      <FiltrosAgendamentos />
+      <FiltrosAgendamentos mediuns={mediuns} />
 
       <AppointmentTable agendamentos={agendamentos} mediuns={mediuns} />
     </div>

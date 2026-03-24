@@ -4,7 +4,7 @@ import { StatCard } from '@/components/admin/StatCard'
 import { AppointmentTable } from '@/components/admin/AppointmentTable'
 import { getEstatisticas } from '@/lib/queries/appointments'
 import { listarAgendamentos } from '@/lib/queries/appointments'
-import { Calendar, Users, Clock, TrendingUp } from 'lucide-react'
+import { Calendar, AlertCircle, Clock, TrendingUp } from 'lucide-react'
 
 export const metadata = {
   title: 'Dashboard | Admin — Casa de Vó Sebastiana',
@@ -23,7 +23,7 @@ export default async function AdminDashboard() {
         <p className="text-sm text-gray-500 mt-1">Visão geral do terreiro</p>
       </div>
 
-      {/* Cards de estatísticas */}
+      {/* Cards de estatísticas — clicáveis, filtram agendamentos */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           titulo="Hoje"
@@ -31,6 +31,7 @@ export default async function AdminDashboard() {
           descricao="atendimentos"
           icone={Clock}
           cor="purple"
+          href="/admin/agendamentos?periodo=hoje"
         />
         <StatCard
           titulo="Próximos 7 dias"
@@ -38,6 +39,7 @@ export default async function AdminDashboard() {
           descricao="agendamentos"
           icone={Calendar}
           cor="amber"
+          href="/admin/agendamentos?periodo=7dias"
         />
         <StatCard
           titulo="Este mês"
@@ -45,13 +47,15 @@ export default async function AdminDashboard() {
           descricao="agendamentos"
           icone={TrendingUp}
           cor="green"
+          href="/admin/agendamentos?periodo=mes"
         />
         <StatCard
-          titulo="Consulentes"
-          valor={stats.totalClientes}
-          descricao="cadastrados"
-          icone={Users}
-          cor="blue"
+          titulo="Pendentes"
+          valor={stats.pendentes}
+          descricao="aguardando confirmação"
+          icone={AlertCircle}
+          cor="amber"
+          href="/admin/agendamentos?status=pendente"
         />
       </div>
 

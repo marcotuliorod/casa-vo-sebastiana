@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils/cn'
 import type { LucideIcon } from 'lucide-react'
@@ -8,6 +9,7 @@ interface StatCardProps {
   descricao?: string
   icone: LucideIcon
   cor?: 'purple' | 'green' | 'amber' | 'blue'
+  href?: string
 }
 
 const cores = {
@@ -17,9 +19,9 @@ const cores = {
   blue: 'bg-blue-50 text-blue-700 border-blue-100',
 }
 
-export function StatCard({ titulo, valor, descricao, icone: Icone, cor = 'purple' }: StatCardProps) {
-  return (
-    <Card className={cn('border', cores[cor])}>
+export function StatCard({ titulo, valor, descricao, icone: Icone, cor = 'purple', href }: StatCardProps) {
+  const card = (
+    <Card className={cn('border', cores[cor], href && 'cursor-pointer hover:shadow-md transition-shadow')}>
       <CardContent className="p-6">
         <div className="flex items-center justify-between">
           <div>
@@ -32,4 +34,7 @@ export function StatCard({ titulo, valor, descricao, icone: Icone, cor = 'purple
       </CardContent>
     </Card>
   )
+
+  if (href) return <Link href={href}>{card}</Link>
+  return card
 }
