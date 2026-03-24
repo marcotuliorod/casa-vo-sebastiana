@@ -39,3 +39,6 @@ next-env.d.ts
 
 # editor
 *.code-workspace
+
+# load test results
+load-tests/results/

@@ -10,7 +10,10 @@
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "load:smoke":  "k6 run load-tests/smoke.js",
+    "load:test":   "k6 run load-tests/load.js",
+    "load:stress": "k6 run load-tests/stress.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
