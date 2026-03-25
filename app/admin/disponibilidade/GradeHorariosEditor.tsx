@@ -100,15 +100,15 @@ export function GradeHorariosEditor({ grade }: GradeHorariosEditorProps) {
             className={cn(
               'px-3 py-1 rounded-full text-xs font-medium transition-colors border',
               turno === t.id
-                ? 'bg-purple-600 text-white border-purple-600'
-                : 'bg-white text-gray-600 border-gray-200 hover:border-purple-300 hover:text-purple-600'
+                ? 'bg-brand text-white border-brand'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-brand-muted hover:text-brand'
             )}
           >
             {t.label}
             <span
               className={cn(
                 'ml-1 font-normal',
-                turno === t.id ? 'text-purple-200' : 'text-gray-400'
+                turno === t.id ? 'text-white/70' : 'text-gray-400'
               )}
             >
               {t.descricao}
@@ -161,7 +161,7 @@ export function GradeHorariosEditor({ grade }: GradeHorariosEditorProps) {
                     className={cn(
                       'h-7 w-full rounded text-xs font-medium transition-all border',
                       ausente
-                        ? 'bg-white text-gray-300 border-dashed border-gray-200 hover:border-purple-300 hover:text-purple-400 hover:bg-purple-50'
+                        ? 'bg-white text-gray-300 border-dashed border-gray-200 hover:border-brand-muted hover:text-brand hover:bg-brand-light'
                         : ativo
                         ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
                         : 'bg-gray-50 text-gray-400 border-gray-200 line-through hover:bg-gray-100',

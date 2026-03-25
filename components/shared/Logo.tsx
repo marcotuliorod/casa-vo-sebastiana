@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import Link from 'next/link'
 import { cn } from '@/lib/utils/cn'
 
@@ -8,36 +9,42 @@ interface LogoProps {
 }
 
 export function Logo({ className, size = 'md', href }: LogoProps) {
-  const sizes = {
-    sm: { emoji: 'text-2xl', titulo: 'text-sm', subtitulo: 'text-xs' },
-    md: { emoji: 'text-4xl', titulo: 'text-xl', subtitulo: 'text-sm' },
-    lg: { emoji: 'text-6xl', titulo: 'text-3xl', subtitulo: 'text-base' },
-  }
+  // sm → horizontal (icon + text side-by-side) — compact for page headers
+  // md/lg → vertical (icon above text) — centered hero/section headers
+  const isHorizontal = size === 'sm'
+
+  const heightClass = {
+    sm: 'h-12',   // 48px
+    md: 'h-20',   // 80px
+    lg: 'h-28',   // 112px
+  }[size]
+
+  const imgProps = isHorizontal
+    ? { src: '/logo-horizontal.png', width: 1376, height: 768 }
+    : { src: '/logo-vertical.png', width: 1408, height: 768 }
 
   const content = (
-    <>
-      <span className={cn('leading-none', sizes[size].emoji)}>🕯️</span>
-      <div className="text-center">
-        <p className={cn('font-serif font-bold text-purple-900', sizes[size].titulo)}>
-          Casa de Vó Sebastiana
-        </p>
-        <p className={cn('text-amber-700 font-medium', sizes[size].subtitulo)}>
-          Umbanda & Atendimento Espiritual
-        </p>
-      </div>
-    </>
+    <Image
+      {...imgProps}
+      alt="Casa de Vó Sebastiana"
+      priority
+      className={cn('w-auto object-contain', heightClass)}
+    />
   )
 
   if (href) {
     return (
-      <Link href={href} className={cn('flex flex-col items-center gap-1 hover:opacity-80 transition-opacity', className)}>
+      <Link
+        href={href}
+        className={cn('inline-flex items-center hover:opacity-80 transition-opacity', className)}
+      >
         {content}
       </Link>
     )
   }
 
   return (
-    <div className={cn('flex flex-col items-center gap-1', className)}>
+    <div className={cn('inline-flex items-center', className)}>
       {content}
     </div>
   )

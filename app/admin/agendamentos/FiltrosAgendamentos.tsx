@@ -104,7 +104,7 @@ export function FiltrosAgendamentos({ mediuns = [] }: FiltrosAgendamentosProps) 
               onClick={() => aplicarPeriodo(periodoAtual === opt.valor ? '' : opt.valor)}
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                 periodoAtual === opt.valor
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-brand text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
@@ -131,7 +131,7 @@ export function FiltrosAgendamentos({ mediuns = [] }: FiltrosAgendamentosProps) 
               onClick={() => aplicarFiltro('status', opt.valor)}
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                 statusAtual === opt.valor
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-brand text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
@@ -176,7 +176,7 @@ export function FiltrosAgendamentos({ mediuns = [] }: FiltrosAgendamentosProps) 
               onClick={() => aplicarFiltro('tipo', opt.valor)}
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                 tipoAtual === opt.valor
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-brand text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >

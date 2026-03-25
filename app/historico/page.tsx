@@ -33,11 +33,11 @@ export default async function HistoricoPage({ searchParams }: Props) {
   const mediumNomes = await getMediunsNomesMap(mediumIds)
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-50 via-background to-background">
+    <div className="min-h-screen bg-gradient-to-b from-brand-light via-background to-background">
       <div className="mx-auto max-w-md px-4 py-10">
         <div className="text-center mb-8">
           <Logo size="sm" href="/" />
-          <h1 className="mt-4 text-xl font-serif font-semibold text-purple-900">
+          <h1 className="mt-4 text-xl font-serif font-semibold text-brand-dark">
             Meus Agendamentos
           </h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -45,7 +45,7 @@ export default async function HistoricoPage({ searchParams }: Props) {
           </p>
         </div>
 
-        {/* US-22: Formulário com máscara de telefone */}
+        {/* Formulário com máscara de telefone */}
         <HistoricoSearchForm defaultValue={telefone} />
 
         {/* Resultados */}
@@ -65,24 +65,23 @@ export default async function HistoricoPage({ searchParams }: Props) {
               <Link
                 key={ag.id}
                 href={`/agendamento/${ag.token_publico}?from=historico`}
-                className="block bg-white rounded-xl border p-4 hover:border-purple-200 transition-colors"
+                className="block bg-white rounded-xl border p-4 hover:border-brand-muted transition-colors"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-1.5 flex-1">
                     <div className="flex items-center gap-2 text-sm text-gray-700">
-                      <Calendar className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" />
+                      <Calendar className="h-3.5 w-3.5 text-brand-muted flex-shrink-0" />
                       <span className="capitalize font-medium">
                         {formatarDataExtenso(ag.data_agendada)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-500">
-                      <Clock className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" />
+                      <Clock className="h-3.5 w-3.5 text-brand-muted flex-shrink-0" />
                       <span>{ag.hora_inicio} — {ag.hora_fim}</span>
                     </div>
                     {ag.medium_id && (
                       <div className="flex items-center gap-2 text-xs text-gray-400">
-                        <Sparkles className="h-3 w-3 text-purple-300 flex-shrink-0" />
-                        {/* US-23: nome real do médium */}
+                        <Sparkles className="h-3 w-3 text-brand-gold flex-shrink-0" />
                         <span>Com: {mediumNomes[ag.medium_id] ?? 'Médium'}</span>
                       </div>
                     )}
@@ -98,7 +97,7 @@ export default async function HistoricoPage({ searchParams }: Props) {
           🌿 Casa de Vó Sebastiana — Umbanda & Atendimento Espiritual
         </p>
         <div className="mt-3 text-center">
-          <Link href="/agendar" className="text-xs text-purple-600 hover:underline">
+          <Link href="/agendar" className="text-xs text-brand hover:underline">
             Fazer novo agendamento →
           </Link>
         </div>

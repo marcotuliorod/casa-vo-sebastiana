@@ -63,13 +63,13 @@ export default async function ConfirmarPage({ searchParams }: Props) {
         {/* Navegação de volta */}
         <Link
           href={`/agendar/${data}`}
-          className="inline-flex items-center text-sm text-gray-500 hover:text-purple-700 mb-4"
+          className="inline-flex items-center text-sm text-gray-500 hover:text-brand mb-4"
         >
           <ChevronLeft className="h-4 w-4" />
           Voltar
         </Link>
 
-        <h2 className="text-xl font-serif font-semibold text-purple-900 mb-1">
+        <h2 className="text-xl font-serif font-semibold text-brand-dark mb-1">
           Seus dados
         </h2>
         <p className="text-sm text-gray-500 mb-6">

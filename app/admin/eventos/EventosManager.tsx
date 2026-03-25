@@ -96,7 +96,7 @@ function FormEvento({
             rows={2}
             placeholder="Informações sobre o evento..."
             defaultValue={inicial?.descricao ?? ''}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-muted resize-none"
           />
         </div>
 
@@ -164,7 +164,7 @@ function FormEvento({
             name="recorrencia"
             value={recorrencia}
             onChange={(e) => setRecorrencia(e.target.value as RecorrenciaTipo)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-muted"
           >
             <option value="nenhuma">Sem recorrência (evento único)</option>
             <option value="semanal">Semanal</option>
@@ -286,7 +286,7 @@ function LinhaEvento({ evento }: { evento: EventoComOcorrencias }) {
               >
                 {evento.ativo ? 'Ativo' : 'Inativo'}
               </span>
-              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-purple-50 text-purple-700">
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-brand-light text-brand">
                 {ROTULOS_RECORRENCIA[evento.recorrencia as RecorrenciaTipo]}
               </span>
             </div>
@@ -462,7 +462,7 @@ export function EventosManager({ eventos }: { eventos: EventoComOcorrencias[] })
       {mostrarFormCriacao && (
         <div className="border rounded-lg p-4 bg-white space-y-3">
           <div className="flex items-center gap-2">
-            <CalendarRange className="h-5 w-5 text-purple-600" />
+            <CalendarRange className="h-5 w-5 text-brand" />
             <h2 className="font-semibold text-gray-900">Novo evento</h2>
           </div>
           <FormEvento

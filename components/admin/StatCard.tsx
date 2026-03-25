@@ -13,7 +13,7 @@ interface StatCardProps {
 }
 
 const cores = {
-  purple: 'bg-purple-50 text-purple-700 border-purple-100',
+  purple: 'bg-brand-light text-brand border-brand-muted/30',
   green: 'bg-green-50 text-green-700 border-green-100',
   amber: 'bg-amber-50 text-amber-700 border-amber-100',
   blue: 'bg-blue-50 text-blue-700 border-blue-100',

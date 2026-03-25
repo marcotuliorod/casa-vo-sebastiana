@@ -44,10 +44,10 @@ function usePhoneMask() {
 
 function AppointmentSummary({ data, horaInicio, horaFim }: BookingFormProps) {
   return (
-    <div className="rounded-xl bg-purple-50 p-4 text-center border border-purple-100">
-      <p className="text-sm text-purple-600 font-medium">Você está agendando para:</p>
-      <p className="text-lg font-bold text-purple-900 capitalize">{formatarDataExtenso(data)}</p>
-      <p className="text-purple-700">
+    <div className="rounded-xl bg-brand-areia/40 p-4 text-center border border-brand-muted/30">
+      <p className="text-sm text-brand font-medium">Você está agendando para:</p>
+      <p className="text-lg font-bold text-brand-dark capitalize">{formatarDataExtenso(data)}</p>
+      <p className="text-brand">
         {horaInicio} — {horaFim}
       </p>
     </div>
@@ -60,7 +60,7 @@ function SubmitButton() {
     <Button
       type="submit"
       size="xl"
-      className="w-full bg-purple-700 hover:bg-purple-800"
+      className="w-full bg-brand hover:bg-brand-hover"
       disabled={pending}
     >
       {pending ? (
@@ -95,12 +95,12 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
       <AppointmentSummary data={data} horaInicio={horaInicio} horaFim={horaFim} />
 
       {estado?.erro && !estado.campo && (
-        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700 space-y-2">
+        <div className="rounded-lg bg-brand-error/10 border border-brand-error/30 p-3 text-sm text-brand-error space-y-2">
           <p>{estado.erro}</p>
           {estado.erro.includes('horário') && (
             <Link
               href={`/agendar/${data}`}
-              className="inline-flex items-center text-sm font-medium text-red-700 underline hover:text-red-800"
+              className="inline-flex items-center text-sm font-medium text-brand-error underline hover:opacity-80"
             >
               ← Escolher outro horário
             </Link>
@@ -118,10 +118,10 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
           autoComplete="name"
           value={nome}
           onChange={(e) => setNome(e.target.value)}
-          className={cn(estado?.campo === 'nome' && 'border-red-400')}
+          className={cn(estado?.campo === 'nome' && 'border-brand-error')}
         />
         {estado?.campo === 'nome' && (
-          <p className="text-xs text-red-600">{estado.erro}</p>
+          <p className="text-xs text-brand-error">{estado.erro}</p>
         )}
       </div>
 
@@ -140,10 +140,10 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
           maxLength={15}
           value={telefone}
           onInput={handleTelefoneInput}
-          className={cn(estado?.campo === 'telefone' && 'border-red-400')}
+          className={cn(estado?.campo === 'telefone' && 'border-brand-error')}
         />
         {estado?.campo === 'telefone' && (
-          <p className="text-xs text-red-600">
+          <p className="text-xs text-brand-error">
             {estado.erro === 'Telefone inválido'
               ? 'Informe um celular válido com DDD, ex: (11) 99999-9999'
               : estado.erro}
@@ -175,7 +175,7 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
           </Label>
           <span className={cn(
             'text-xs tabular-nums',
-            notas.length > NOTAS_MAX * 0.9 ? 'text-amber-600' : 'text-gray-400'
+            notas.length > NOTAS_MAX * 0.9 ? 'text-brand-warning' : 'text-gray-400'
           )}>
             {notas.length}/{NOTAS_MAX}
           </span>

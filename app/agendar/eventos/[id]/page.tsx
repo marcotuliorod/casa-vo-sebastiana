@@ -27,9 +27,9 @@ export default async function EventoPage({ params }: PageProps) {
     <div>
       <div className="rounded-2xl bg-white p-6 shadow-sm border">
         <div className="flex items-start gap-3 mb-1">
-          <CalendarRange className="h-6 w-6 text-purple-600 flex-shrink-0 mt-0.5" />
+          <CalendarRange className="h-6 w-6 text-brand flex-shrink-0 mt-0.5" />
           <div>
-            <h2 className="text-xl font-serif font-semibold text-purple-900">
+            <h2 className="text-xl font-serif font-semibold text-brand-dark">
               {evento.titulo}
             </h2>
             {evento.descricao && (
@@ -49,7 +49,7 @@ export default async function EventoPage({ params }: PageProps) {
         </div>
 
         <div className="pt-4 border-t">
-          <Link href="/agendar/eventos" className="text-sm text-purple-600 hover:underline">
+          <Link href="/agendar/eventos" className="text-sm text-brand hover:underline">
             ← Voltar para eventos
           </Link>
         </div>

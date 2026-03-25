@@ -2,12 +2,8 @@
 export const dynamic = 'force-dynamic'
 
 import { createAdminClient } from '@/lib/supabase/server'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { formatarTelefone } from '@/lib/utils/phone'
-import { formatarData } from '@/lib/utils/date'
-import type { Cliente, Agendamento } from '@/types/database'
-import { Users, Phone, Calendar } from 'lucide-react'
+import { ConsulentesManager } from './ConsulentesManager'
+import type { Cliente } from '@/types/database'
 
 export const metadata = {
   title: 'Consulentes | Admin — Casa de Vó Sebastiana',
@@ -26,7 +22,6 @@ export default async function ConsulentesPage() {
     .select('*')
     .order('nome')
 
-  // Para cada cliente, buscar contagem de agendamentos
   const clientesComDados: ClienteComContagem[] = await Promise.all(
     (clientes ?? []).map(async (c: Cliente) => {
       const { count } = await supabase
@@ -61,48 +56,7 @@ export default async function ConsulentesPage() {
         </p>
       </div>
 
-      {clientesComDados.length === 0 ? (
-        <div className="rounded-xl border-2 border-dashed border-gray-200 py-16 text-center">
-          <Users className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-          <p className="text-gray-400">Nenhum consulente ainda.</p>
-        </div>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {clientesComDados.map((c) => (
-            <Card key={c.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-4 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-medium text-gray-900 leading-tight">{c.nome}</h3>
-                  <Badge variant="secondary" className="text-xs whitespace-nowrap">
-                    {c.total_agendamentos} atend.
-                  </Badge>
-                </div>
-
-                <div className="space-y-1 text-sm text-gray-500">
-                  <div className="flex items-center gap-2">
-                    <Phone className="h-3.5 w-3.5 flex-shrink-0" />
-                    <a
-                      href={`https://wa.me/${c.telefone.replace(/\D/g, '')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-green-600 hover:underline"
-                    >
-                      {formatarTelefone(c.telefone)}
-                    </a>
-                  </div>
-
-                  {c.ultimo_agendamento && (
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
-                      <span>Último: {formatarData(c.ultimo_agendamento)}</span>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      <ConsulentesManager clientes={clientesComDados} />
     </div>
   )
 }

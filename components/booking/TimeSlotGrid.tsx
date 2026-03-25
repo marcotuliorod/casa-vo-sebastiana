@@ -17,7 +17,7 @@ export function TimeSlotGrid({ slots, data, slotSelecionado }: TimeSlotGridProps
         <p className="text-sm text-gray-400 mt-1">Todos os horários estão preenchidos.</p>
         <Link
           href="/agendar"
-          className="inline-flex items-center justify-center mt-4 text-sm text-purple-700 hover:underline"
+          className="inline-flex items-center justify-center mt-4 text-sm text-brand hover:underline"
         >
           ← Voltar ao calendário
         </Link>
@@ -38,8 +38,8 @@ export function TimeSlotGrid({ slots, data, slotSelecionado }: TimeSlotGridProps
             className={cn(
               'flex min-h-12 flex-col items-center justify-center rounded-xl border-2 p-4 text-center transition-all hover:shadow-md active:scale-95',
               isSelecionado
-                ? 'border-purple-600 bg-purple-50 text-purple-700 shadow-md'
-                : 'border-gray-200 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50'
+                ? 'border-brand bg-brand-light text-brand shadow-md'
+                : 'border-gray-200 bg-white text-gray-700 hover:border-brand-muted hover:bg-brand-light'
             )}
           >
             <span className="text-lg font-bold">{slot.hora_inicio}</span>

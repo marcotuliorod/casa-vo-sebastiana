@@ -50,12 +50,28 @@ const config: Config = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
-        // Cores espirituais do terreiro
-        terreiro: {
-          roxo: '#6B21A8',
-          dourado: '#D97706',
-          verde: '#166534',
-          branco: '#F8F5F0',
+        // Design system oficial — Casa de Vó Sebastiana
+        brand: {
+          DEFAULT: '#4A86C8',      // Azul Sereno acessível — botões primários
+          light: '#EEF5FB',        // Fundo azul muito claro — hover, backgrounds
+          muted: '#A7C7E7',        // Azul Sereno — bordas, acentos, focus ring
+          dark: '#1A4A7C',         // Azul escuro — títulos e texto de destaque
+          hover: '#3A72B0',        // Azul escuro — hover dos botões primários
+          areia: '#E8D8C3',        // Areia Sagrada — backgrounds secundários
+          'areia-light': '#F5EDE2', // Areia clara — hover sobre areia
+          gold: '#D6B36A',         // Dourado sutil — acentos especiais
+          green: '#B7D3C0',        // Verde folha suave — sucesso/cura
+          success: '#7BC47F',      // Verde sucesso
+          error: '#E57373',        // Vermelho erro
+          warning: '#F2C94C',      // Amarelo alerta
+        },
+        // Paleta original do logo (mantido para referência)
+        marca: {
+          azul: '#A7C7E7',
+          areia: '#E8D8C3',
+          dourado: '#D6B36A',
+          marinho: '#1A4A7C',
+          branco: '#FAFAFA',
         },
       },
       borderRadius: {

@@ -31,7 +31,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
         {/* Nav mobile */}
         <nav className="md:hidden bg-white border-b px-4 py-2 flex gap-2 overflow-x-auto">
-          <Link href="/admin" className="text-xs text-purple-700 font-medium whitespace-nowrap px-3 py-1.5 rounded-full bg-purple-50">
+          <Link href="/admin" className="text-xs text-brand font-medium whitespace-nowrap px-3 py-1.5 rounded-full bg-brand-light">
             Dashboard
           </Link>
           <Link href="/admin/agendamentos" className="text-xs text-gray-600 whitespace-nowrap px-3 py-1.5 rounded-full hover:bg-gray-100">

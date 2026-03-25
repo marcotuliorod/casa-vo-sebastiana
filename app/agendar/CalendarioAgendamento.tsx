@@ -52,8 +52,8 @@ export function CalendarioAgendamento({ datasBlockeadas, diasComAtendimento, dat
           fromDate={hoje}
           toDate={addDays(hoje, 60)}
           modifiersClassNames={{
-            selected: 'bg-purple-600 text-white rounded-full',
-            today: 'font-bold text-purple-600',
+            selected: 'bg-brand text-white rounded-full',
+            today: 'font-bold text-brand',
             disabled: 'opacity-30 cursor-not-allowed',
           }}
           classNames={{
@@ -68,8 +68,8 @@ export function CalendarioAgendamento({ datasBlockeadas, diasComAtendimento, dat
             head_cell: 'text-muted-foreground rounded-md w-9 font-normal text-[0.8rem] flex-1 text-center',
             row: 'flex w-full mt-2',
             cell: 'flex-1 text-center text-sm p-0 relative',
-            day: 'h-9 w-9 p-0 font-normal mx-auto flex items-center justify-center rounded-full hover:bg-purple-50 transition-colors',
-            day_selected: 'bg-purple-600 text-white hover:bg-purple-600',
+            day: 'h-9 w-9 p-0 font-normal mx-auto flex items-center justify-center rounded-full hover:bg-brand-light transition-colors',
+            day_selected: 'bg-brand text-white hover:bg-brand',
             day_today: 'font-bold',
             day_disabled: 'opacity-30',
           }}
@@ -78,7 +78,7 @@ export function CalendarioAgendamento({ datasBlockeadas, diasComAtendimento, dat
 
       {dataSelecionada && (
         <div className="mt-4">
-          <p className="text-center text-sm text-purple-700 font-medium">
+          <p className="text-center text-sm text-brand font-medium">
             📅 {format(dataSelecionada, "EEEE, d 'de' MMMM", { locale: ptBR })}
           </p>
           <p className="text-center text-xs text-gray-400 mt-1">Carregando horários...</p>
@@ -87,7 +87,7 @@ export function CalendarioAgendamento({ datasBlockeadas, diasComAtendimento, dat
 
       <div className="mt-4 flex items-center justify-center gap-4 text-xs text-gray-400">
         <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-full bg-purple-600" />
+          <span className="inline-block h-2 w-2 rounded-full bg-brand" />
           disponível
         </span>
         <span className="flex items-center gap-1">

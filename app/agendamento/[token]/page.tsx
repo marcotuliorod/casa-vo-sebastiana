@@ -31,7 +31,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
     agendamento.status === 'pendente' || agendamento.status === 'confirmado'
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-50 via-background to-background">
+    <div className="min-h-screen bg-gradient-to-b from-brand-light via-background to-background">
       <div className="mx-auto max-w-md px-4 py-10">
         <div className="text-center mb-8">
           <Logo size="sm" href="/" />
@@ -39,9 +39,9 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
 
         {/* Banner: aguardando confirmação */}
         {agendamento.status === 'pendente' && (
-          <div className="mb-6 rounded-xl bg-amber-50 border border-amber-200 p-4 text-center">
-            <p className="font-semibold text-amber-800">🕐 Agendamento recebido!</p>
-            <p className="text-sm text-amber-600 mt-1">
+          <div className="mb-6 rounded-xl bg-brand-areia border border-brand-muted/40 p-4 text-center">
+            <p className="font-semibold text-brand-dark">🕐 Agendamento recebido!</p>
+            <p className="text-sm text-brand mt-1">
               Aguardando confirmação da Casa. Você receberá uma mensagem no WhatsApp em breve.
             </p>
           </div>
@@ -49,10 +49,10 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
 
         {/* Card de sucesso para agendamentos confirmados */}
         {agendamento.status === 'confirmado' && (
-          <div className="mb-6 rounded-xl bg-green-50 border border-green-200 p-4 text-center">
-            <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto mb-2" />
-            <p className="font-semibold text-green-800">Agendamento confirmado!</p>
-            <p className="text-sm text-green-600">
+          <div className="mb-6 rounded-xl bg-brand-green/20 border border-brand-green p-4 text-center">
+            <CheckCircle2 className="h-8 w-8 text-brand-success mx-auto mb-2" />
+            <p className="font-semibold text-gray-800">Agendamento confirmado!</p>
+            <p className="text-sm text-gray-600">
               Você receberá uma confirmação via WhatsApp.
             </p>
           </div>
@@ -61,7 +61,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
         <Card>
           <CardContent className="p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h1 className="text-lg font-serif font-semibold text-purple-900">
+              <h1 className="text-lg font-serif font-semibold text-brand-dark">
                 Seu Agendamento
               </h1>
               <StatusBadge status={agendamento.status} />
@@ -69,22 +69,22 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
 
             <div className="space-y-3 text-sm">
               <div className="flex items-center gap-3 text-gray-600">
-                <User className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                <User className="h-4 w-4 text-brand-muted flex-shrink-0" />
                 <span>{agendamento.clientes.nome}</span>
               </div>
 
               <div className="flex items-center gap-3 text-gray-600">
-                <Phone className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                <Phone className="h-4 w-4 text-brand-muted flex-shrink-0" />
                 <span>{formatarTelefone(agendamento.clientes.telefone)}</span>
               </div>
 
               <div className="flex items-center gap-3 text-gray-600">
-                <Calendar className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                <Calendar className="h-4 w-4 text-brand-muted flex-shrink-0" />
                 <span className="capitalize">{formatarDataExtenso(agendamento.data_agendada)}</span>
               </div>
 
               <div className="flex items-center gap-3 text-gray-600">
-                <Clock className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                <Clock className="h-4 w-4 text-brand-muted flex-shrink-0" />
                 <span>
                   {agendamento.hora_inicio} — {agendamento.hora_fim}
                 </span>
@@ -92,21 +92,21 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
 
               {mediumNome && (
                 <div className="flex items-center gap-3 text-gray-600">
-                  <Sparkles className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                  <Sparkles className="h-4 w-4 text-brand-gold flex-shrink-0" />
                   <span>Atendimento com: {mediumNome}</span>
                 </div>
               )}
             </div>
 
             {agendamento.notas && (
-              <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
+              <div className="rounded-lg bg-brand-areia/40 p-3 text-sm text-gray-600">
                 <p className="font-medium text-gray-700 mb-1">Observações:</p>
                 <p>{agendamento.notas}</p>
               </div>
             )}
 
             {agendamento.status === 'cancelado' && agendamento.motivo_cancelamento && (
-              <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
+              <div className="rounded-lg bg-brand-error/10 p-3 text-sm text-brand-error">
                 <p className="font-medium mb-1">Motivo do cancelamento:</p>
                 <p>{agendamento.motivo_cancelamento}</p>
               </div>
@@ -117,7 +117,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
         {/* Ações */}
         <div className="mt-4 space-y-3">
           {podeCancel && (
-            <Button asChild variant="outline" className="w-full text-red-600 border-red-200 hover:bg-red-50">
+            <Button asChild variant="outline" className="w-full text-brand-error border-brand-error/30 hover:bg-brand-error/10">
               <Link href={`/agendamento/${token}/cancelar`}>
                 Cancelar agendamento
               </Link>
@@ -131,13 +131,13 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
           )}
 
           {agendamento.status === 'realizado' && (
-            <Button asChild className="w-full bg-purple-700 hover:bg-purple-800">
+            <Button asChild className="w-full bg-brand hover:bg-brand-hover">
               <Link href="/agendar">Reagendar ✨</Link>
             </Button>
           )}
 
           {agendamento.status === 'cancelado' && (
-            <Button asChild className="w-full bg-purple-700 hover:bg-purple-800">
+            <Button asChild className="w-full bg-brand hover:bg-brand-hover">
               <Link href="/agendar">Fazer novo agendamento ✨</Link>
             </Button>
           )}
@@ -146,7 +146,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
         {/* Link de volta ao histórico quando navegou por lá */}
         {from === 'historico' && (
           <div className="mt-4 text-center">
-            <Link href="/historico" className="text-xs text-purple-600 hover:underline">
+            <Link href="/historico" className="text-xs text-brand hover:underline">
               ← Meu histórico de agendamentos
             </Link>
           </div>
@@ -154,7 +154,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
 
         {/* Link de volta à home sempre visível */}
         <div className="mt-3 text-center">
-          <Link href="/" className="text-xs text-gray-400 hover:text-purple-600 hover:underline transition-colors">
+          <Link href="/" className="text-xs text-gray-400 hover:text-brand hover:underline transition-colors">
             ← Página inicial
           </Link>
         </div>

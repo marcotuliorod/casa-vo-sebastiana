@@ -33,7 +33,7 @@ export default function CancelarPage({ params }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-50 via-background to-background">
+    <div className="min-h-screen bg-gradient-to-b from-brand-light via-background to-background">
       <div className="mx-auto max-w-md px-4 py-10">
         <div className="text-center mb-8">
           <Logo size="sm" href="/" />
@@ -51,8 +51,8 @@ export default function CancelarPage({ params }: Props) {
               </>
             ) : (
               <>
-                <AlertTriangle className="h-12 w-12 text-amber-500 mx-auto" />
-                <h2 className="text-xl font-serif font-semibold text-gray-800">
+                <AlertTriangle className="h-12 w-12 text-brand-warning mx-auto" />
+                <h2 className="text-xl font-serif font-semibold text-brand-dark">
                   Cancelar agendamento?
                 </h2>
                 <p className="text-sm text-gray-500">
@@ -61,7 +61,7 @@ export default function CancelarPage({ params }: Props) {
                 </p>
 
                 {erro && (
-                  <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                  <div className="rounded-lg bg-brand-error/10 border border-brand-error/30 p-3 text-sm text-brand-error">
                     {erro}
                   </div>
                 )}

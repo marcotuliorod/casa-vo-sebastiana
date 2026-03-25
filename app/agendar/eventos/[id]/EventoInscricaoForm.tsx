@@ -21,7 +21,7 @@ interface EventoInscricaoFormProps {
 function BotaoSubmit() {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" disabled={pending} className="w-full bg-purple-700 hover:bg-purple-800">
+    <Button type="submit" disabled={pending} className="w-full bg-brand hover:bg-brand-hover">
       {pending ? (
         <>
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -71,10 +71,10 @@ export function EventoInscricaoForm({
             return (
               <label
                 key={oc.data}
-                className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
                   esgotado
                     ? 'opacity-50 cursor-not-allowed bg-gray-50'
-                    : 'hover:bg-purple-50 hover:border-purple-300'
+                    : 'hover:bg-brand-light hover:border-brand-muted'
                 }`}
               >
                 <input
@@ -83,7 +83,7 @@ export function EventoInscricaoForm({
                   value={oc.data}
                   disabled={esgotado}
                   required
-                  className="mt-0.5"
+                  className="mt-0.5 accent-brand"
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-800 capitalize">
@@ -93,9 +93,9 @@ export function EventoInscricaoForm({
                     {horaInicio.slice(0, 5)} — {horaFim.slice(0, 5)}
                     {' · '}
                     {esgotado ? (
-                      <span className="text-red-500">Esgotado</span>
+                      <span className="text-brand-error">Esgotado</span>
                     ) : (
-                      <span className="text-green-600">
+                      <span className="text-brand-success">
                         {oc.vagasRestantes} vaga{oc.vagasRestantes !== 1 ? 's' : ''} disponível
                       </span>
                     )}
@@ -106,7 +106,7 @@ export function EventoInscricaoForm({
           })}
         </div>
         {ocorrenciasDisponiveis.length === 0 && (
-          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+          <p className="text-sm text-brand-error bg-brand-error/10 border border-brand-error/30 rounded-lg px-3 py-2">
             Todas as datas disponíveis estão esgotadas.
           </p>
         )}
@@ -123,7 +123,7 @@ export function EventoInscricaoForm({
           required
         />
         {estado?.campo === 'nome' && (
-          <p className="text-xs text-red-500">{estado.erro}</p>
+          <p className="text-xs text-brand-error">{estado.erro}</p>
         )}
       </div>
 
@@ -141,7 +141,7 @@ export function EventoInscricaoForm({
           Você receberá a confirmação por WhatsApp
         </p>
         {estado?.campo === 'telefone' && (
-          <p className="text-xs text-red-500">{estado.erro}</p>
+          <p className="text-xs text-brand-error">{estado.erro}</p>
         )}
       </div>
 
@@ -170,13 +170,13 @@ export function EventoInscricaoForm({
           rows={2}
           maxLength={500}
           placeholder="Alguma informação adicional..."
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-muted resize-none"
         />
       </div>
 
       {/* Erro geral */}
       {estado?.erro && !estado.campo && (
-        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+        <p className="text-sm text-brand-error bg-brand-error/10 border border-brand-error/30 rounded-xl px-3 py-2">
           {estado.erro}
         </p>
       )}

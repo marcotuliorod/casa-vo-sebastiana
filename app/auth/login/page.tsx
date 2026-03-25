@@ -37,7 +37,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-50 via-background to-background flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-b from-brand-light via-background to-background flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <Logo size="md" />
@@ -47,7 +47,7 @@ export default function LoginPage() {
           <CardContent className="p-8">
             {enviado ? (
               <div className="text-center space-y-4">
-                <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto" />
+                <CheckCircle2 className="h-12 w-12 text-brand-success mx-auto" />
                 <h2 className="text-lg font-semibold text-gray-800">
                   Link enviado!
                 </h2>
@@ -59,7 +59,7 @@ export default function LoginPage() {
             ) : (
               <form onSubmit={handleEnviarLink} className="space-y-5">
                 <div className="text-center mb-2">
-                  <h2 className="text-xl font-serif font-semibold text-purple-900">
+                  <h2 className="text-xl font-serif font-semibold text-brand-dark">
                     Acesso Administrativo
                   </h2>
                   <p className="text-sm text-gray-500 mt-1">
@@ -68,7 +68,7 @@ export default function LoginPage() {
                 </div>
 
                 {erro && (
-                  <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                  <div className="rounded-lg bg-brand-error/10 border border-brand-error/30 p-3 text-sm text-brand-error">
                     {erro}
                   </div>
                 )}
@@ -89,7 +89,7 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   size="lg"
-                  className="w-full bg-purple-700 hover:bg-purple-800"
+                  className="w-full bg-brand hover:bg-brand-hover"
                   disabled={pendente}
                 >
                   {pendente ? (

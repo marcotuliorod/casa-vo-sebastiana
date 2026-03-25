@@ -502,10 +502,181 @@ export async function excluirEvento(id: string): Promise<{ erro?: string }> {
     return { erro: `Não é possível excluir: há ${count} inscrição(ões) ativa(s) neste evento. Cancele-as primeiro.` }
   }
 
+  // Remove agendamentos históricos (cancelados/realizados) antes de deletar o evento
+  await supabase.from('agendamentos').delete().eq('evento_id', id)
+
   const { error } = await supabase.from('eventos').delete().eq('id', id)
   if (error) return { erro: error.message }
 
   revalidatePath('/admin/eventos')
   revalidatePath('/agendar/eventos')
+  return {}
+}
+
+// ─── Agendamentos: editar e excluir ──────────────────────────
+
+export type EstadoFormAgendamento = { erro?: string; campo?: string } | null
+
+const schemaEditarAgendamento = z.object({
+  data_agendada: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
+  hora_inicio: z.string().regex(/^\d{2}:\d{2}$/, 'Hora de início inválida'),
+  hora_fim: z.string().regex(/^\d{2}:\d{2}$/, 'Hora de fim inválida'),
+  notas: z.string().max(500).optional().or(z.literal('')),
+})
+
+export async function editarAgendamento(
+  id: string,
+  _estado: EstadoFormAgendamento,
+  formData: FormData
+): Promise<EstadoFormAgendamento> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
+  const dados = Object.fromEntries(formData.entries())
+  const resultado = schemaEditarAgendamento.safeParse(dados)
+  if (!resultado.success) {
+    const primeiro = resultado.error.errors[0]
+    return { erro: primeiro.message, campo: String(primeiro.path[0]) }
+  }
+
+  const { data_agendada, hora_inicio, hora_fim, notas } = resultado.data
+
+  if (hora_fim <= hora_inicio) {
+    return { erro: 'Hora de fim deve ser posterior à hora de início.', campo: 'hora_fim' }
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('agendamentos')
+    .update({ data_agendada, hora_inicio, hora_fim, notas: notas || null })
+    .eq('id', id)
+
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/agendamentos')
+  revalidatePath('/admin')
+  return null
+}
+
+export async function excluirAgendamento(id: string): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('agendamentos').delete().eq('id', id)
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/agendamentos')
+  revalidatePath('/admin')
+  return {}
+}
+
+// ─── Clientes/Consulentes: editar e excluir ──────────────────
+
+export type EstadoFormCliente = { erro?: string; campo?: string } | null
+
+const schemaCliente = z.object({
+  nome: z.string().min(2, 'Nome obrigatório'),
+  telefone: z.string().min(8, 'Telefone obrigatório'),
+  email: z.string().email('Email inválido').optional().or(z.literal('')),
+  notas: z.string().max(500).optional().or(z.literal('')),
+})
+
+export async function editarCliente(
+  id: string,
+  _estado: EstadoFormCliente,
+  formData: FormData
+): Promise<EstadoFormCliente> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
+  const dados = Object.fromEntries(formData.entries())
+  const resultado = schemaCliente.safeParse(dados)
+  if (!resultado.success) {
+    const primeiro = resultado.error.errors[0]
+    return { erro: primeiro.message, campo: String(primeiro.path[0]) }
+  }
+
+  const { nome, telefone, email, notas } = resultado.data
+  const supabase = createAdminClient()
+
+  const { error } = await supabase
+    .from('clientes')
+    .update({ nome, telefone, email: email || null, notas: notas || null })
+    .eq('id', id)
+
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/consulentes')
+  return null
+}
+
+export async function excluirCliente(id: string): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
+  const supabase = createAdminClient()
+
+  const { count } = await supabase
+    .from('agendamentos')
+    .select('*', { count: 'exact', head: true })
+    .eq('cliente_id', id)
+    .in('status', ['pendente', 'confirmado'])
+
+  if ((count ?? 0) > 0) {
+    return { erro: `Não é possível excluir: há ${count} agendamento(s) ativo(s) para este consulente.` }
+  }
+
+  const { error } = await supabase.from('clientes').delete().eq('id', id)
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/consulentes')
+  return {}
+}
+
+// ─── Médiuns: editar e excluir ───────────────────────────────
+
+export type EstadoFormMedium = { erro?: string } | null
+
+export async function editarMedium(
+  id: string,
+  _estado: EstadoFormMedium,
+  formData: FormData
+): Promise<EstadoFormMedium> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
+  const dados = Object.fromEntries(formData.entries())
+  const resultado = schemaMedium.safeParse(dados)
+  if (!resultado.success) return { erro: resultado.error.errors[0].message }
+
+  const { nome, especialidade, telefone } = resultado.data
+  const supabase = createAdminClient()
+
+  const { error } = await supabase
+    .from('mediuns')
+    .update({ nome, especialidade: especialidade || null, telefone: telefone || null })
+    .eq('id', id)
+
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/mediuns')
+  return null
+}
+
+export async function excluirMedium(id: string): Promise<{ erro?: string }> {
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
+
+  const supabase = createAdminClient()
+
+  // Remove vínculo de agendamentos antes de excluir
+  await supabase.from('agendamentos').update({ medium_id: null }).eq('medium_id', id)
+
+  const { error } = await supabase.from('mediuns').delete().eq('id', id)
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/mediuns')
+  revalidatePath('/admin/agendamentos')
   return {}
 }

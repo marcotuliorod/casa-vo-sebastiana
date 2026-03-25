@@ -51,13 +51,13 @@ export default async function HorariosPage({ params }: Props) {
         {/* Navegação de volta */}
         <Link
           href="/agendar"
-          className="inline-flex items-center text-sm text-gray-500 hover:text-purple-700 mb-4"
+          className="inline-flex items-center text-sm text-gray-500 hover:text-brand mb-4"
         >
           <ChevronLeft className="h-4 w-4" />
           Voltar
         </Link>
 
-        <h2 className="text-xl font-serif font-semibold text-purple-900 mb-1">
+        <h2 className="text-xl font-serif font-semibold text-brand-dark mb-1">
           Escolha um horário
         </h2>
         <p className="text-sm text-gray-500 mb-6 capitalize">
@@ -65,7 +65,7 @@ export default async function HorariosPage({ params }: Props) {
         </p>
 
         {erro ? (
-          <div className="text-center py-8 text-red-500 text-sm">{erro}</div>
+          <div className="text-center py-8 text-brand-error text-sm">{erro}</div>
         ) : (
           <TimeSlotGrid slots={slots} data={data} />
         )}

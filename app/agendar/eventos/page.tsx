@@ -27,8 +27,8 @@ export default async function EventosPublicosPage() {
     <div>
       <div className="rounded-2xl bg-white p-6 shadow-sm border">
         <div className="flex items-center gap-3 mb-1">
-          <CalendarRange className="h-6 w-6 text-purple-600" />
-          <h2 className="text-xl font-serif font-semibold text-purple-900">Eventos</h2>
+          <CalendarRange className="h-6 w-6 text-brand flex-shrink-0" />
+          <h2 className="text-xl font-serif font-semibold text-brand-dark">Eventos</h2>
         </div>
         <p className="text-sm text-gray-500 mb-6">
           Inscreva-se nos eventos abertos da Casa de Vó Sebastiana.
@@ -50,7 +50,7 @@ export default async function EventosPublicosPage() {
                 <Link
                   key={evento.id}
                   href={`/agendar/eventos/${evento.id}`}
-                  className="flex items-start gap-4 rounded-xl border p-4 hover:bg-purple-50 hover:border-purple-200 transition-colors"
+                  className="flex items-start gap-4 rounded-xl border p-4 hover:bg-brand-light hover:border-brand-muted transition-colors"
                 >
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900">{evento.titulo}</p>
@@ -71,7 +71,7 @@ export default async function EventosPublicosPage() {
                           {format(parseISO(proximaOcorrencia.data), "dd/MM/yyyy", { locale: ptBR })}
                         </span>
                       )}
-                      <span className={totalVagas === 0 ? 'text-red-500' : 'text-green-600'}>
+                      <span className={totalVagas === 0 ? 'text-brand-error' : 'text-brand-success'}>
                         <Users className="inline h-3 w-3 mr-0.5" />
                         {totalVagas === 0
                           ? 'Esgotado'
@@ -90,7 +90,7 @@ export default async function EventosPublicosPage() {
         <div className="mt-6 pt-4 border-t">
           <Link
             href="/agendar"
-            className="text-sm text-purple-600 hover:underline"
+            className="text-sm text-brand hover:underline"
           >
             ← Agendar por horário
           </Link>

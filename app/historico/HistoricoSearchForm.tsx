@@ -40,11 +40,11 @@ export function HistoricoSearchForm({ defaultValue = '' }: Props) {
         onChange={handleChange}
         inputMode="numeric"
         placeholder="(11) 99999-9999"
-        className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+        className="flex-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-muted"
       />
       <button
         type="submit"
-        className="flex items-center gap-1.5 rounded-lg bg-purple-700 px-4 py-2 text-sm font-medium text-white hover:bg-purple-800"
+        className="flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-hover transition-colors"
       >
         <Search className="h-4 w-4" />
         Buscar

@@ -26,8 +26,8 @@ export function ProgressSteps({ passoAtual }: ProgressStepsProps) {
                 <div
                   className={cn(
                     'flex h-9 w-9 items-center justify-center rounded-full border-2 text-sm font-semibold transition-all',
-                    concluido && 'border-purple-600 bg-purple-600 text-white',
-                    atual && 'border-purple-600 bg-white text-purple-600',
+                    concluido && 'border-brand bg-brand text-white',
+                    atual && 'border-brand bg-white text-brand',
                     !concluido && !atual && 'border-gray-300 bg-white text-gray-400'
                   )}
                 >
@@ -36,7 +36,7 @@ export function ProgressSteps({ passoAtual }: ProgressStepsProps) {
                 <span
                   className={cn(
                     'mt-1 text-xs font-medium',
-                    atual ? 'text-purple-700' : 'text-gray-400'
+                    atual ? 'text-brand' : 'text-gray-400'
                   )}
                 >
                   {passo.rotulo}
@@ -48,7 +48,7 @@ export function ProgressSteps({ passoAtual }: ProgressStepsProps) {
                 <div
                   className={cn(
                     'mx-2 mb-4 h-0.5 w-12 sm:w-20 transition-colors',
-                    passo.numero < passoAtual ? 'bg-purple-600' : 'bg-gray-200'
+                    passo.numero < passoAtual ? 'bg-brand' : 'bg-gray-200'
                   )}
                 />
               )}

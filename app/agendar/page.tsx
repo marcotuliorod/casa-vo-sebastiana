@@ -31,9 +31,9 @@ export default async function AgendarPage() {
       {/* Banner de acesso a eventos */}
       <Link
         href="/agendar/eventos"
-        className="flex items-center gap-3 rounded-xl border bg-white p-4 mb-4 hover:bg-purple-50 transition-colors shadow-sm"
+        className="flex items-center gap-3 rounded-xl border bg-white p-4 mb-4 hover:bg-brand-light transition-colors shadow-sm"
       >
-        <CalendarRange className="h-5 w-5 text-purple-600 flex-shrink-0" />
+        <CalendarRange className="h-5 w-5 text-brand flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-800 text-sm">Participar de um evento</p>
           <p className="text-xs text-gray-500">Ver eventos abertos para inscrição</p>
@@ -44,7 +44,7 @@ export default async function AgendarPage() {
       <ProgressSteps passoAtual={1} />
 
       <div className="rounded-2xl bg-white p-6 shadow-sm border">
-        <h2 className="text-xl font-serif font-semibold text-purple-900 mb-1">
+        <h2 className="text-xl font-serif font-semibold text-brand-dark mb-1">
           Escolha uma data
         </h2>
         <p className="text-sm text-gray-500 mb-6">

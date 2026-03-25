@@ -4,25 +4,41 @@
 
 @layer base {
   :root {
-    --background: 45 30% 97%;
-    --foreground: 270 30% 15%;
+    /* Fundo branco puro */
+    --background: 0 0% 100%;
+    --foreground: 220 23% 18%;        /* #2D3748 — texto escuro */
+
     --card: 0 0% 100%;
-    --card-foreground: 270 30% 15%;
+    --card-foreground: 220 23% 18%;
     --popover: 0 0% 100%;
-    --popover-foreground: 270 30% 15%;
-    --primary: 271 76% 40%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 270 20% 94%;
-    --secondary-foreground: 270 30% 20%;
-    --muted: 270 10% 94%;
-    --muted-foreground: 270 10% 50%;
-    --accent: 270 30% 94%;
-    --accent-foreground: 270 30% 20%;
-    --destructive: 0 84% 60%;
+    --popover-foreground: 220 23% 18%;
+
+    /* Azul Sereno acessível — CTAs e interativos */
+    --primary: 207 53% 54%;           /* #4A86C8 */
+    --primary-foreground: 0 0% 100%;  /* branco */
+
+    /* Areia Sagrada — backgrounds secundários */
+    --secondary: 33 40% 84%;          /* #E8D8C3 */
+    --secondary-foreground: 220 23% 18%;
+
+    --muted: 207 30% 95%;             /* azul muito claro */
+    --muted-foreground: 220 10% 50%;
+
+    /* Areia Sagrada como accent */
+    --accent: 33 40% 84%;             /* #E8D8C3 */
+    --accent-foreground: 220 23% 18%;
+
+    /* Vermelho suave para erros */
+    --destructive: 0 65% 67%;         /* #E57373 */
     --destructive-foreground: 0 0% 100%;
-    --border: 270 15% 88%;
-    --input: 270 15% 88%;
-    --ring: 271 76% 40%;
+
+    /* Bordas em azul-cinza suave */
+    --border: 207 35% 87%;            /* #C8DCF0 */
+    --input: 207 35% 87%;
+
+    /* Focus ring no azul sereno claro */
+    --ring: 207 57% 78%;              /* #A7C7E7 */
+
     --radius: 0.75rem;
   }
 }
