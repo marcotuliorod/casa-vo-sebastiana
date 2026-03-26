@@ -14,6 +14,8 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/actions/admin', () => ({
   atualizarStatusAgendamento: vi.fn().mockResolvedValue(undefined),
   atribuirMedium: vi.fn().mockResolvedValue(undefined),
+  editarAgendamento: vi.fn().mockResolvedValue(null),
+  excluirAgendamento: vi.fn().mockResolvedValue({}),
 }))
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
