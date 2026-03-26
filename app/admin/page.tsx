@@ -1,9 +1,12 @@
 // Dashboard principal do painel administrativo
 import { formatInTimeZone } from 'date-fns-tz'
+import { startOfMonth, endOfMonth, addMonths, format } from 'date-fns'
 import { StatCard } from '@/components/admin/StatCard'
 import { AppointmentTable } from '@/components/admin/AppointmentTable'
+import { CalendarioMes } from './_components/CalendarioMes'
 import { getEstatisticas, listarAgendamentos } from '@/lib/queries/appointments'
 import { listarMediuns } from '@/lib/queries/mediuns'
+import { getContagensPorDia } from '@/lib/queries/calendario'
 import { Calendar, AlertCircle, Clock, TrendingUp } from 'lucide-react'
 
 export const metadata = {
@@ -11,10 +14,16 @@ export const metadata = {
 }
 
 export default async function AdminDashboard() {
-  const [stats, agendamentosHoje, mediuns] = await Promise.all([
+  const hoje = new Date()
+  const mesAtualStr = formatInTimeZone(hoje, 'America/Sao_Paulo', 'yyyy-MM')
+  const dataInicio = format(startOfMonth(hoje), 'yyyy-MM-dd')
+  const dataFim = format(endOfMonth(addMonths(hoje, 1)), 'yyyy-MM-dd')
+
+  const [stats, agendamentosHoje, mediuns, contagens] = await Promise.all([
     getEstatisticas(),
-    listarAgendamentos({ data: formatInTimeZone(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd') }),
+    listarAgendamentos({ data: formatInTimeZone(hoje, 'America/Sao_Paulo', 'yyyy-MM-dd') }),
     listarMediuns(),
+    getContagensPorDia(dataInicio, dataFim),
   ])
 
   return (
@@ -59,6 +68,9 @@ export default async function AdminDashboard() {
           href="/admin/agendamentos?status=pendente"
         />
       </div>
+
+      {/* Calendário mensal */}
+      <CalendarioMes contagens={contagens} mesInicial={mesAtualStr} />
 
       {/* Agendamentos de hoje */}
       <div>

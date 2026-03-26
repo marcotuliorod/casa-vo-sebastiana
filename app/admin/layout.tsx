@@ -43,6 +43,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <Link href="/admin/consulentes" className="text-xs text-gray-600 whitespace-nowrap px-3 py-1.5 rounded-full hover:bg-gray-100">
             Consulentes
           </Link>
+          <Link href="/admin/recados" className="text-xs text-gray-600 whitespace-nowrap px-3 py-1.5 rounded-full hover:bg-gray-100">
+            Mural
+          </Link>
         </nav>
 
         <main className="flex-1 p-6">{children}</main>

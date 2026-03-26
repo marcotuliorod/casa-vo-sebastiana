@@ -10,6 +10,7 @@ import {
   Clock,
   Users,
   Sparkles,
+  MessageSquare,
   LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -22,6 +23,7 @@ const navItems = [
   { href: '/admin/eventos', label: 'Eventos', icone: CalendarRange, exact: false },
   { href: '/admin/consulentes', label: 'Consulentes', icone: Users, exact: false },
   { href: '/admin/mediuns', label: 'Médiuns', icone: Sparkles, exact: false },
+  { href: '/admin/recados', label: 'Mural de Recados', icone: MessageSquare, exact: false },
 ]
 
 export function AdminNav() {

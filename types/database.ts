@@ -115,6 +115,21 @@ export interface OcorrenciaEvento {
   vagasRestantes: number
 }
 
+// ─── Mural de Recados ─────────────────────────────────────────
+
+export type PrioridadeRecado = 'normal' | 'importante' | 'urgente'
+
+export interface Recado {
+  id: string
+  titulo: string
+  conteudo: string
+  prioridade: PrioridadeRecado
+  fixado: boolean
+  ativo: boolean
+  criado_em: string
+  atualizado_em: string
+}
+
 // ─── Tipos para o fluxo de agendamento ───────────────────────
 export interface SlotDisponivel {
   hora_inicio: string

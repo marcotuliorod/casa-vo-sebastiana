@@ -1,7 +1,9 @@
 // Área pessoal do médium — acesso via link privado por token
 import { notFound } from 'next/navigation'
 import { getMediumPorToken, getAgendamentosDoMedium, getAgendamentosDisponiveisMedium } from '@/lib/queries/mediuns'
+import { listarRecados } from '@/lib/queries/recados'
 import { MediumActions } from './MediumActions'
+import { MuralRecados } from './MuralRecados'
 import { formatarDataExtenso } from '@/lib/utils/date'
 import { formatarTelefone } from '@/lib/utils/phone'
 import type { AgendamentoComCliente } from '@/types/database'
@@ -53,9 +55,10 @@ export default async function MediumPage({ params }: Props) {
 
   if (!medium) notFound()
 
-  const [meus, disponiveis] = await Promise.all([
+  const [meus, disponiveis, recados] = await Promise.all([
     getAgendamentosDoMedium(medium.id),
     getAgendamentosDisponiveisMedium(),
+    listarRecados(),
   ])
 
   return (
@@ -76,6 +79,9 @@ export default async function MediumPage({ params }: Props) {
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-8">
+        {/* Mural de recados */}
+        <MuralRecados recados={recados} />
+
         {/* Meus atendimentos */}
         <section>
           <div className="flex items-center justify-between mb-3">
