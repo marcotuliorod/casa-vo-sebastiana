@@ -1,7 +1,7 @@
 // Lista de consulentes com histórico de agendamentos
 export const dynamic = 'force-dynamic'
 
-import { createAdminClient } from '@/lib/supabase/server'
+import { createServerSessionClient } from '@/lib/supabase/server'
 import { ConsulentesManager } from './ConsulentesManager'
 import type { Cliente } from '@/types/database'
 
@@ -15,37 +15,36 @@ interface ClienteComContagem extends Cliente {
 }
 
 export default async function ConsulentesPage() {
-  const supabase = createAdminClient()
+  const supabase = await createServerSessionClient()
 
-  const { data: clientes } = await supabase
-    .from('clientes')
-    .select('*')
-    .order('nome')
+  const [{ data: clientes }, { data: agendamentos }] = await Promise.all([
+    supabase.from('clientes').select('*').order('nome'),
+    supabase
+      .from('agendamentos')
+      .select('cliente_id, data_agendada')
+      .not('status', 'eq', 'cancelado')
+      .order('data_agendada', { ascending: false }),
+  ])
 
-  const clientesComDados: ClienteComContagem[] = await Promise.all(
-    (clientes ?? []).map(async (c: Cliente) => {
-      const { count } = await supabase
-        .from('agendamentos')
-        .select('*', { count: 'exact', head: true })
-        .eq('cliente_id', c.id)
-        .not('status', 'eq', 'cancelado')
+  const agsPorCliente = new Map<string, { total: number; ultimo: string | null }>()
+  for (const ag of agendamentos ?? []) {
+    const entry = agsPorCliente.get(ag.cliente_id)
+    if (!entry) {
+      agsPorCliente.set(ag.cliente_id, { total: 1, ultimo: ag.data_agendada })
+    } else {
+      entry.total += 1
+      if (!entry.ultimo || ag.data_agendada > entry.ultimo) entry.ultimo = ag.data_agendada
+    }
+  }
 
-      const { data: ultimo } = await supabase
-        .from('agendamentos')
-        .select('data_agendada')
-        .eq('cliente_id', c.id)
-        .not('status', 'eq', 'cancelado')
-        .order('data_agendada', { ascending: false })
-        .limit(1)
-        .single()
-
-      return {
-        ...c,
-        total_agendamentos: count ?? 0,
-        ultimo_agendamento: ultimo?.data_agendada ?? null,
-      }
-    })
-  )
+  const clientesComDados: ClienteComContagem[] = (clientes ?? []).map((c: Cliente) => {
+    const info = agsPorCliente.get(c.id)
+    return {
+      ...c,
+      total_agendamentos: info?.total ?? 0,
+      ultimo_agendamento: info?.ultimo ?? null,
+    }
+  })
 
   return (
     <div className="space-y-5">
