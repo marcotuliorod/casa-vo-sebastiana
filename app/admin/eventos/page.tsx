@@ -1,7 +1,7 @@
 import { listarEventos } from '@/lib/queries/eventos'
 import { getOcorrenciasEvento } from '@/lib/queries/eventos'
 import { EventosManager } from './EventosManager'
-import type { OcorrenciaEvento } from '@/types/database'
+import type { OcorrenciaEvento, RecorrenciaTipo } from '@/types/database'
 
 export const metadata = { title: 'Eventos — Admin' }
 
@@ -21,7 +21,7 @@ export default async function EventosPage() {
     hora_inicio: string
     hora_fim: string
     capacidade: number
-    recorrencia: string
+    recorrencia: RecorrenciaTipo
     data_fim_recorrencia: string | null
     lembrete_horas: number
     ativo: boolean

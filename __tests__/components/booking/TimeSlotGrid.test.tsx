@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { TimeSlotGrid } from '@/components/booking/TimeSlotGrid'
 
 // next/link renderiza <a> no jsdom
@@ -83,7 +83,7 @@ describe('TimeSlotGrid', () => {
       // O link do slot 09:00 deve ter a classe de seleção
       const links = screen.getAllByRole('link')
       const linkSelecionado = links.find((l) => l.textContent?.includes('09:00'))
-      expect(linkSelecionado).toHaveClass('border-purple-600')
+      expect(linkSelecionado).toHaveClass('border-brand')
     })
 
     it('slots não selecionados têm classe de borda padrão', () => {

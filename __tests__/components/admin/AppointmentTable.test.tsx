@@ -7,6 +7,15 @@ import type { AgendamentoComCliente, Medium } from '@/types/database'
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
+vi.mock('react-dom', async (importOriginal) => {
+  const original = await importOriginal<typeof import('react-dom')>()
+  return {
+    ...original,
+    useFormState: vi.fn((_action: unknown, initialState: unknown) => [initialState, vi.fn()]),
+    useFormStatus: vi.fn(() => ({ pending: false })),
+  }
+})
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }))
@@ -45,6 +54,7 @@ const makeAgendamento = (
   token_publico: 'tok-123',
   lembrete_enviado: false,
   notas: null,
+  motivo_cancelamento: null,
   criado_em: '2025-01-01T00:00:00Z',
   atualizado_em: '2025-01-01T00:00:00Z',
   clientes: {
@@ -79,16 +89,15 @@ describe('AppointmentTable', () => {
     })
   })
 
-  // ─── Renderização da tabela ─────────────────────────────────
+  // ─── Renderização dos cards ─────────────────────────────────
   describe('Renderização da tabela', () => {
-    it('renderiza cabeçalhos das colunas', () => {
+    it('renderiza informações essenciais do agendamento', () => {
       render(<AppointmentTable agendamentos={[makeAgendamento()]} />)
-      expect(screen.getByText('Consulente')).toBeInTheDocument()
-      expect(screen.getByText('Data & Horário')).toBeInTheDocument()
-      expect(screen.getByText('Status')).toBeInTheDocument()
-      expect(screen.getByText('Médium')).toBeInTheDocument()
-      expect(screen.getByText('WhatsApp')).toBeInTheDocument()
-      expect(screen.getByText('Ações')).toBeInTheDocument()
+      // Layout é de cards — verifica nome, data, horário e telefone
+      expect(screen.getByText('Marco Tulio')).toBeInTheDocument()
+      expect(screen.getByText('10/07/2027')).toBeInTheDocument()
+      expect(screen.getByText('09:00 — 10:00')).toBeInTheDocument()
+      expect(screen.getByText('(11) 99999-8888')).toBeInTheDocument()
     })
 
     it('exibe nome do consulente', () => {
@@ -115,14 +124,16 @@ describe('AppointmentTable', () => {
 
     it('exibe link de WhatsApp com href correto', () => {
       render(<AppointmentTable agendamentos={[makeAgendamento()]} />)
-      const link = screen.getByText('Abrir chat ↗')
-      expect(link.closest('a')).toHaveAttribute('href', 'https://wa.me/11999998888')
+      // Link do WhatsApp usa ícone (title="Abrir WhatsApp"), sem texto visível
+      const link = document.querySelector('a[href^="https://wa.me/"]') as HTMLAnchorElement
+      expect(link).toBeInTheDocument()
+      expect(link).toHaveAttribute('href', 'https://wa.me/11999998888')
     })
 
     it('link de WhatsApp abre em nova aba', () => {
       render(<AppointmentTable agendamentos={[makeAgendamento()]} />)
-      const link = screen.getByText('Abrir chat ↗')
-      expect(link.closest('a')).toHaveAttribute('target', '_blank')
+      const link = document.querySelector('a[href^="https://wa.me/"]') as HTMLAnchorElement
+      expect(link).toHaveAttribute('target', '_blank')
     })
 
     it('exibe botão "Exportar CSV"', () => {
@@ -199,10 +210,10 @@ describe('AppointmentTable', () => {
 
   // ─── Confirmação de cancelamento (2 etapas) ─────────────────
   describe('Fluxo de cancelamento em 2 etapas', () => {
-    it('exibe "Confirmar?" ao clicar em Cancelar pela primeira vez', () => {
+    it('exibe "Cancelar?" ao clicar em Cancelar pela primeira vez', () => {
       render(<AppointmentTable agendamentos={[makeAgendamento({ status: 'pendente' })]} />)
       fireEvent.click(screen.getByText('Cancelar'))
-      expect(screen.getByText('Confirmar?')).toBeInTheDocument()
+      expect(screen.getByText('Cancelar?')).toBeInTheDocument()
     })
 
     it('exibe botões "Sim" e "Não" após clicar em Cancelar', () => {
@@ -218,7 +229,7 @@ describe('AppointmentTable', () => {
       fireEvent.click(screen.getByText('Não'))
       // Deve voltar ao botão Cancelar original
       expect(screen.getByText('Cancelar')).toBeInTheDocument()
-      expect(screen.queryByText('Confirmar?')).not.toBeInTheDocument()
+      expect(screen.queryByText('Cancelar?')).not.toBeInTheDocument()
     })
 
     it('clicar em "Sim" chama atualizarStatusAgendamento com status "cancelado"', async () => {

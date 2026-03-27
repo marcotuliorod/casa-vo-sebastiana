@@ -51,7 +51,7 @@ describe('StatCard', () => {
     it('usa cor padrão "purple" quando cor não informada', () => {
       const { container } = render(<StatCard {...DEFAULT_PROPS} />)
       const card = container.firstChild as HTMLElement
-      expect(card).toHaveClass('bg-purple-50')
+      expect(card).toHaveClass('bg-brand-light')
     })
 
     it('aplica cor green quando cor="green"', () => {

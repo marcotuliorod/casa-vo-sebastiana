@@ -190,7 +190,7 @@ describe('BookingForm', () => {
       mockEstado = { erro: 'Nome é obrigatório', campo: 'nome' }
       render(<BookingForm {...DEFAULT_PROPS} />)
       expect(screen.getByText('Nome é obrigatório')).toBeInTheDocument()
-      expect(screen.getByLabelText(/nome completo/i)).toHaveClass('border-red-400')
+      expect(screen.getByLabelText(/nome completo/i)).toHaveClass('border-brand-error')
     })
 
     it('exibe mensagem amigável para erro "Telefone inválido"', () => {
@@ -202,7 +202,7 @@ describe('BookingForm', () => {
     it('exibe erro de campo telefone com borda vermelha', () => {
       mockEstado = { erro: 'Telefone inválido', campo: 'telefone' }
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/whatsapp/i)).toHaveClass('border-red-400')
+      expect(screen.getByLabelText(/whatsapp/i)).toHaveClass('border-brand-error')
     })
 
     it('sem estado de erro, não exibe mensagens de erro', () => {

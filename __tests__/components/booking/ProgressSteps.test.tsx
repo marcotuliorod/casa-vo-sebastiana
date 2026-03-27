@@ -73,15 +73,15 @@ describe('ProgressSteps', () => {
     it('rótulo do passo 2 tem estilo de item ativo', () => {
       render(<ProgressSteps passoAtual={2} />)
       const rotulo = screen.getByText('Escolha o horário')
-      expect(rotulo).toHaveClass('text-purple-700')
+      expect(rotulo).toHaveClass('text-brand')
     })
 
-    it('rótulos de passos não ativos não têm text-purple-700', () => {
+    it('rótulos de passos não ativos não têm text-brand', () => {
       render(<ProgressSteps passoAtual={2} />)
       const rotulo1 = screen.getByText('Escolha a data')
       const rotulo3 = screen.getByText('Confirme')
-      expect(rotulo1).not.toHaveClass('text-purple-700')
-      expect(rotulo3).not.toHaveClass('text-purple-700')
+      expect(rotulo1).not.toHaveClass('text-brand')
+      expect(rotulo3).not.toHaveClass('text-brand')
     })
   })
 
@@ -94,7 +94,7 @@ describe('ProgressSteps', () => {
 
     it('rótulo do passo 3 tem estilo de item ativo', () => {
       render(<ProgressSteps passoAtual={3} />)
-      expect(screen.getByText('Confirme')).toHaveClass('text-purple-700')
+      expect(screen.getByText('Confirme')).toHaveClass('text-brand')
     })
 
     it('dois checks renderizados para passos 1 e 2 concluídos', () => {
