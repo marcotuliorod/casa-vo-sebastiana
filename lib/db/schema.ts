@@ -10,7 +10,7 @@
 // RLS não foi recriada — autorização é só na camada de aplicação (ver Contexto do plano).
 
 import { randomUUID } from 'crypto'
-import { sql } from 'drizzle-orm'
+import { sql, relations } from 'drizzle-orm'
 import {
   pgTable,
   pgEnum,
@@ -186,6 +186,21 @@ export const agendamentos = pgTable(
       .where(sql`${t.status} = 'confirmado' AND ${t.lembreteEnviado} = FALSE`),
   ]
 )
+
+export const agendamentosRelations = relations(agendamentos, ({ one }) => ({
+  cliente: one(clientes, {
+    fields: [agendamentos.clienteId],
+    references: [clientes.id],
+  }),
+  medium: one(mediuns, {
+    fields: [agendamentos.mediumId],
+    references: [mediuns.id],
+  }),
+  evento: one(eventos, {
+    fields: [agendamentos.eventoId],
+    references: [eventos.id],
+  }),
+}))
 
 // ─── logs_whatsapp ───────────────────────────────────────────
 

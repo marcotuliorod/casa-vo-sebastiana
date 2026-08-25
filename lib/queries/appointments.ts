@@ -1,26 +1,22 @@
 // Queries de agendamentos para o painel admin e área pública
 
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
-import { createAdminClient } from '@/lib/supabase/server'
-import type { AgendamentoComCliente, AppointmentStatus } from '@/types/database'
+import { and, asc, count, eq, gte, ilike, inArray, isNotNull, isNull, lte, ne, or } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { agendamentos, clientes } from '@/lib/db/schema'
+import { mapAgendamentoComCliente } from '@/lib/db/mappers'
+import type { AppointmentStatus } from '@/types/database'
 
 const TZ = 'America/Sao_Paulo'
 
 // Buscar agendamento pelo token público (sem login)
 export async function getAgendamentoPorToken(token: string) {
-  const supabase = createAdminClient()
+  const linha = await db.query.agendamentos.findFirst({
+    where: eq(agendamentos.tokenPublico, token),
+    with: { cliente: true },
+  })
 
-  const { data, error } = await supabase
-    .from('agendamentos')
-    .select(`
-      *,
-      clientes (*)
-    `)
-    .eq('token_publico', token)
-    .single()
-
-  if (error) return null
-  return data as AgendamentoComCliente
+  return linha ? mapAgendamentoComCliente(linha) : null
 }
 
 // Listar agendamentos para o painel admin com filtros opcionais
@@ -32,19 +28,10 @@ export async function listarAgendamentos(filtros?: {
   medium_id?: string
   tipo?: 'evento' | 'horario'
 }) {
-  const supabase = createAdminClient()
-
-  let query = supabase
-    .from('agendamentos')
-    .select(`
-      *,
-      clientes (*)
-    `)
-    .order('data_agendada', { ascending: true })
-    .order('hora_inicio', { ascending: true })
+  const condicoes = []
 
   if (filtros?.data) {
-    query = query.eq('data_agendada', filtros.data)
+    condicoes.push(eq(agendamentos.dataAgendada, filtros.data))
   }
 
   if (filtros?.periodo) {
@@ -52,11 +39,11 @@ export async function listarAgendamentos(filtros?: {
     const hoje = formatInTimeZone(agora, TZ, 'yyyy-MM-dd')
     switch (filtros.periodo) {
       case 'hoje':
-        query = query.eq('data_agendada', hoje)
+        condicoes.push(eq(agendamentos.dataAgendada, hoje))
         break
       case '7dias': {
         const daqui7 = formatInTimeZone(new Date(agora.getTime() + 7 * 24 * 60 * 60 * 1000), TZ, 'yyyy-MM-dd')
-        query = query.gte('data_agendada', hoje).lte('data_agendada', daqui7)
+        condicoes.push(gte(agendamentos.dataAgendada, hoje), lte(agendamentos.dataAgendada, daqui7))
         break
       }
       case 'semana': {
@@ -66,23 +53,24 @@ export async function listarAgendamentos(filtros?: {
         segunda.setDate(agora.getDate() + offsetSeg)
         const domingo = new Date(segunda)
         domingo.setDate(segunda.getDate() + 6)
-        query = query
-          .gte('data_agendada', formatInTimeZone(segunda, TZ, 'yyyy-MM-dd'))
-          .lte('data_agendada', formatInTimeZone(domingo, TZ, 'yyyy-MM-dd'))
+        condicoes.push(
+          gte(agendamentos.dataAgendada, formatInTimeZone(segunda, TZ, 'yyyy-MM-dd')),
+          lte(agendamentos.dataAgendada, formatInTimeZone(domingo, TZ, 'yyyy-MM-dd'))
+        )
         break
       }
       case 'mes': {
         const mesInicio = formatInTimeZone(agora, TZ, 'yyyy-MM') + '-01'
         const proximoMes = new Date(agora.getFullYear(), agora.getMonth() + 1, 1)
         const mesFim = formatInTimeZone(new Date(proximoMes.getTime() - 1), TZ, 'yyyy-MM-dd')
-        query = query.gte('data_agendada', mesInicio).lte('data_agendada', mesFim)
+        condicoes.push(gte(agendamentos.dataAgendada, mesInicio), lte(agendamentos.dataAgendada, mesFim))
         break
       }
     }
   }
 
   if (filtros?.status) {
-    query = query.eq('status', filtros.status)
+    condicoes.push(eq(agendamentos.status, filtros.status))
   }
 
   if (filtros?.busca) {
@@ -90,116 +78,109 @@ export async function listarAgendamentos(filtros?: {
       .slice(0, 50)
       .replace(/%/g, '\\%')
       .replace(/_/g, '\\_')
-    query = query.or(
-      `nome.ilike.%${buscaSegura}%,telefone.ilike.%${buscaSegura}%`,
-      { foreignTable: 'clientes' }
-    )
+    const padrao = `%${buscaSegura}%`
+
+    // Resolve primeiro os clientes que batem (nome ou telefone), depois filtra
+    // agendamentos por cliente_id — equivalente ao .or(..., {foreignTable}) do supabase-js.
+    const clientesEncontrados = await db
+      .select({ id: clientes.id })
+      .from(clientes)
+      .where(or(ilike(clientes.nome, padrao), ilike(clientes.telefone, padrao)))
+
+    condicoes.push(inArray(agendamentos.clienteId, clientesEncontrados.map((c) => c.id)))
   }
 
   if (filtros?.medium_id) {
-    query = query.eq('medium_id', filtros.medium_id)
+    condicoes.push(eq(agendamentos.mediumId, filtros.medium_id))
   }
 
   if (filtros?.tipo === 'evento') {
-    query = query.not('evento_id', 'is', null)
+    condicoes.push(isNotNull(agendamentos.eventoId))
   } else if (filtros?.tipo === 'horario') {
-    query = query.is('evento_id', null)
+    condicoes.push(isNull(agendamentos.eventoId))
   }
 
-  const { data, error } = await query
+  const linhas = await db.query.agendamentos.findMany({
+    where: condicoes.length ? and(...condicoes) : undefined,
+    with: { cliente: true },
+    orderBy: [asc(agendamentos.dataAgendada), asc(agendamentos.horaInicio)],
+  })
 
-  if (error) return []
-
-  return data as AgendamentoComCliente[]
+  return linhas.map(mapAgendamentoComCliente)
 }
 
 // Estatísticas para o dashboard
 export async function getEstatisticas() {
-  const supabase = createAdminClient()
   const agora = new Date()
   const hoje = formatInTimeZone(agora, TZ, 'yyyy-MM-dd')
   const daqui7 = formatInTimeZone(new Date(agora.getTime() + 7 * 24 * 60 * 60 * 1000), TZ, 'yyyy-MM-dd')
+  const inicioMes = fromZonedTime(`${formatInTimeZone(agora, TZ, 'yyyy-MM')}-01T00:00:00`, TZ)
 
-  const [hoje_count, semana_count, mes_count, total_clientes, pendentes_count] = await Promise.all([
-    supabase
-      .from('agendamentos')
-      .select('*', { count: 'exact', head: true })
-      .eq('data_agendada', hoje)
-      .not('status', 'eq', 'cancelado'),
+  const [[hojeCount], [semanaCount], [mesCount], [totalClientes], [pendentesCount]] = await Promise.all([
+    db
+      .select({ value: count() })
+      .from(agendamentos)
+      .where(and(eq(agendamentos.dataAgendada, hoje), ne(agendamentos.status, 'cancelado'))),
 
-    supabase
-      .from('agendamentos')
-      .select('*', { count: 'exact', head: true })
-      .gte('data_agendada', hoje)
-      .lte('data_agendada', daqui7)
-      .not('status', 'eq', 'cancelado'),
+    db
+      .select({ value: count() })
+      .from(agendamentos)
+      .where(
+        and(
+          gte(agendamentos.dataAgendada, hoje),
+          lte(agendamentos.dataAgendada, daqui7),
+          ne(agendamentos.status, 'cancelado')
+        )
+      ),
 
-    supabase
-      .from('agendamentos')
-      .select('*', { count: 'exact', head: true })
-      .gte('criado_em', fromZonedTime(
-        `${formatInTimeZone(agora, TZ, 'yyyy-MM')}-01T00:00:00`,
-        TZ
-      ).toISOString())
-      .not('status', 'eq', 'cancelado'),
+    db
+      .select({ value: count() })
+      .from(agendamentos)
+      .where(and(gte(agendamentos.criadoEm, inicioMes), ne(agendamentos.status, 'cancelado'))),
 
-    supabase
-      .from('clientes')
-      .select('*', { count: 'exact', head: true }),
+    db.select({ value: count() }).from(clientes),
 
-    supabase
-      .from('agendamentos')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'pendente'),
+    db.select({ value: count() }).from(agendamentos).where(eq(agendamentos.status, 'pendente')),
   ])
 
   return {
-    hoje: hoje_count.count ?? 0,
-    semana: semana_count.count ?? 0,
-    mes: mes_count.count ?? 0,
-    totalClientes: total_clientes.count ?? 0,
-    pendentes: pendentes_count.count ?? 0,
+    hoje: hojeCount?.value ?? 0,
+    semana: semanaCount?.value ?? 0,
+    mes: mesCount?.value ?? 0,
+    totalClientes: totalClientes?.value ?? 0,
+    pendentes: pendentesCount?.value ?? 0,
   }
 }
 
 // Histórico de agendamentos do consulente (por telefone normalizado)
 export async function getHistoricoCliente(telefone: string) {
-  const supabase = createAdminClient()
-
-  // 1. Buscar cliente pelo telefone
-  const { data: cliente } = await supabase
-    .from('clientes')
-    .select('id')
-    .eq('telefone', telefone)
-    .single()
+  const [cliente] = await db
+    .select({ id: clientes.id })
+    .from(clientes)
+    .where(eq(clientes.telefone, telefone))
+    .limit(1)
 
   if (!cliente) return []
 
-  // 2. Buscar agendamentos do cliente
-  const { data, error } = await supabase
-    .from('agendamentos')
-    .select('*, clientes(*)')
-    .eq('cliente_id', cliente.id)
-    .order('data_agendada', { ascending: false })
+  const linhas = await db.query.agendamentos.findMany({
+    where: eq(agendamentos.clienteId, cliente.id),
+    with: { cliente: true },
+    orderBy: (a, { desc }) => [desc(a.dataAgendada)],
+  })
 
-  if (error) return []
-  return data as AgendamentoComCliente[]
+  return linhas.map(mapAgendamentoComCliente)
 }
 
 // Agendamentos para o cron de lembretes
 export async function getAgendamentosParaLembrete(data: string) {
-  const supabase = createAdminClient()
+  const linhas = await db.query.agendamentos.findMany({
+    where: and(
+      eq(agendamentos.dataAgendada, data),
+      eq(agendamentos.status, 'confirmado'),
+      eq(agendamentos.lembreteEnviado, false)
+    ),
+    with: { cliente: true },
+  })
 
-  const { data: agendamentos, error } = await supabase
-    .from('agendamentos')
-    .select(`
-      *,
-      clientes (*)
-    `)
-    .eq('data_agendada', data)
-    .eq('status', 'confirmado')
-    .eq('lembrete_enviado', false)
-
-  if (error) return []
-  return agendamentos as AgendamentoComCliente[]
+  return linhas.map(mapAgendamentoComCliente)
 }

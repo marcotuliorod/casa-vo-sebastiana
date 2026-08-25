@@ -1,79 +1,68 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// ─── Mock do createAdminClient (Supabase) ─────────────────────────
-// Precisamos simular o builder fluente de queries do Supabase.
-// Cada chamada de .from() retorna um builder com métodos encadeáveis.
-
-function buildSupabaseMock(responses: Record<string, { data: unknown; error?: unknown }>) {
-  const builder = {
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    in: vi.fn().mockReturnThis(),
-    is: vi.fn().mockReturnThis(),
-    gte: vi.fn().mockReturnThis(),
-    order: vi.fn().mockReturnThis(),
-    // resolve final
-    _resolve: null as unknown,
-  }
-
-  const from = vi.fn((tabela: string) => {
-    const resp = responses[tabela] ?? { data: [], error: null }
-    return {
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      in: vi.fn().mockReturnThis(),
-      is: vi.fn().mockReturnThis(),
-      gte: vi.fn().mockReturnThis(),
-      order: vi.fn().mockImplementation(function () {
-        return Promise.resolve(resp)
-      }),
-      // Promise implícita — para queries sem .order()
-      then: (resolve: (v: unknown) => void) => resolve(resp),
-      [Symbol.toStringTag]: 'Promise',
-    }
-  })
-
-  return { from }
-}
-
-// Helper mais preciso: cria mock que resolve como Promise
-function mkClient(tableResponses: Record<string, { data: unknown; error?: unknown }>) {
-  const client = {
-    from: vi.fn().mockImplementation((tabela: string) => {
-      const resp = tableResponses[tabela] ?? { data: [], error: null }
-      const q: Record<string, unknown> = {}
-      const chainable = () => q
-      ;['select', 'eq', 'in', 'is', 'gte', 'order'].forEach((m) => {
-        q[m] = vi.fn().mockImplementation(() => {
-          // Cada método retorna o mesmo objeto (encadeável e resolvível)
-          return chainablePromise
-        })
-      })
-      const chainablePromise: unknown = {
-        ...q,
-        then: (res: (v: unknown) => void) => Promise.resolve(resp).then(res),
-        catch: (rej: (e: unknown) => void) => Promise.resolve(resp).catch(rej),
-        finally: (f: () => void) => Promise.resolve(resp).finally(f),
-        [Symbol.toStringTag]: 'Promise',
-      }
-      return chainablePromise
-    }),
-  }
-  return client
-}
-
-vi.mock('@/lib/supabase/server', () => ({
-  createAdminClient: vi.fn(),
+vi.mock('@/lib/db', () => ({
+  db: { select: vi.fn() },
 }))
 
-import { createAdminClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
+import { gradeHorarios, datasBloqueadas, agendamentos } from '@/lib/db/schema'
 import {
   getSlotsDisponiveis,
   getDatasBlockeadas,
   getDiasAtivos,
 } from '@/lib/queries/availability'
 
-const mockCreateAdminClient = createAdminClient as ReturnType<typeof vi.fn>
+const mockDb = db as unknown as { select: ReturnType<typeof vi.fn> }
+
+// ─── Mock do client Drizzle ─────────────────────────────────────────
+// db.select().from(tabela).where(...) é "thenable" direto (resolve pros
+// rows); .orderBy(...) encadeia mais um passo. Uma tabela pode ser
+// configurada pra rejeitar (simula erro de DB).
+
+type TableRef = typeof gradeHorarios | typeof datasBloqueadas | typeof agendamentos
+
+function mkDb(config: {
+  gradeHorarios?: unknown[]
+  datasBloqueadas?: unknown[]
+  agendamentos?: unknown[]
+  erros?: { gradeHorarios?: string }
+}) {
+  function mkChain(rows: unknown[]) {
+    const chain = {
+      where: vi.fn(() => chain),
+      orderBy: vi.fn(() => Promise.resolve(rows)),
+      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
+        Promise.resolve(rows).then(res, rej),
+      catch: (rej: (e: unknown) => unknown) => Promise.resolve(rows).catch(rej),
+    }
+    return chain
+  }
+
+  function mkErrorChain(message: string) {
+    const erro = new Error(message)
+    const chain = {
+      where: vi.fn(() => chain),
+      orderBy: vi.fn(() => Promise.reject(erro)),
+      then: (_res: unknown, rej?: (e: unknown) => unknown) => Promise.reject(erro).catch(rej),
+      catch: (rej: (e: unknown) => unknown) => Promise.reject(erro).catch(rej),
+    }
+    return chain
+  }
+
+  return {
+    select: vi.fn(() => ({
+      from: vi.fn((table: TableRef) => {
+        if (table === gradeHorarios) {
+          if (config.erros?.gradeHorarios) return mkErrorChain(config.erros.gradeHorarios)
+          return mkChain(config.gradeHorarios ?? [])
+        }
+        if (table === datasBloqueadas) return mkChain(config.datasBloqueadas ?? [])
+        if (table === agendamentos) return mkChain(config.agendamentos ?? [])
+        return mkChain([])
+      }),
+    })),
+  }
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -81,9 +70,9 @@ beforeEach(() => {
 
 // ─── Fixtures ─────────────────────────────────────────────────────
 const GRADE_TERCA = [
-  { dia_semana: 2, hora_inicio: '09:00:00', hora_fim: '10:00:00', ativo: true },
-  { dia_semana: 2, hora_inicio: '10:00:00', hora_fim: '11:00:00', ativo: true },
-  { dia_semana: 2, hora_inicio: '14:00:00', hora_fim: '15:00:00', ativo: true },
+  { diaSemana: 2, horaInicio: '09:00:00', horaFim: '10:00:00', ativo: true },
+  { diaSemana: 2, horaInicio: '10:00:00', horaFim: '11:00:00', ativo: true },
+  { diaSemana: 2, horaInicio: '14:00:00', horaFim: '15:00:00', ativo: true },
 ]
 
 // ─────────────────────────────────────────────────────────────────
@@ -91,12 +80,8 @@ const GRADE_TERCA = [
 // ─────────────────────────────────────────────────────────────────
 describe('getSlotsDisponiveis', () => {
   it('retorna slots normalizados para HH:MM quando não há conflitos', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkClient({
-        grade_horarios: { data: GRADE_TERCA },
-        datas_bloqueadas: { data: [] },
-        agendamentos: { data: [] },
-      })
+    mockDb.select.mockImplementation(
+      mkDb({ gradeHorarios: GRADE_TERCA, datasBloqueadas: [], agendamentos: [] }).select
     )
 
     const resultado = await getSlotsDisponiveis('2025-03-25') // terça-feira
@@ -108,12 +93,8 @@ describe('getSlotsDisponiveis', () => {
   })
 
   it('retorna [] quando não há grade para o dia', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkClient({
-        grade_horarios: { data: [] },
-        datas_bloqueadas: { data: [] },
-        agendamentos: { data: [] },
-      })
+    mockDb.select.mockImplementation(
+      mkDb({ gradeHorarios: [], datasBloqueadas: [], agendamentos: [] }).select
     )
 
     const resultado = await getSlotsDisponiveis('2025-03-23') // domingo sem grade
@@ -122,12 +103,12 @@ describe('getSlotsDisponiveis', () => {
   })
 
   it('retorna [] quando o dia inteiro está bloqueado (hora_inicio null)', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkClient({
-        grade_horarios: { data: GRADE_TERCA },
-        datas_bloqueadas: { data: [{ data_bloqueada: '2025-03-25', hora_inicio: null }] },
-        agendamentos: { data: [] },
-      })
+    mockDb.select.mockImplementation(
+      mkDb({
+        gradeHorarios: GRADE_TERCA,
+        datasBloqueadas: [{ dataBloqueada: '2025-03-25', horaInicio: null }],
+        agendamentos: [],
+      }).select
     )
 
     const resultado = await getSlotsDisponiveis('2025-03-25')
@@ -135,14 +116,12 @@ describe('getSlotsDisponiveis', () => {
   })
 
   it('exclui slots com bloqueio parcial de hora', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkClient({
-        grade_horarios: { data: GRADE_TERCA },
-        datas_bloqueadas: {
-          data: [{ data_bloqueada: '2025-03-25', hora_inicio: '09:00:00' }],
-        },
-        agendamentos: { data: [] },
-      })
+    mockDb.select.mockImplementation(
+      mkDb({
+        gradeHorarios: GRADE_TERCA,
+        datasBloqueadas: [{ dataBloqueada: '2025-03-25', horaInicio: '09:00:00' }],
+        agendamentos: [],
+      }).select
     )
 
     const resultado = await getSlotsDisponiveis('2025-03-25')
@@ -151,12 +130,12 @@ describe('getSlotsDisponiveis', () => {
   })
 
   it('exclui slots já agendados (pendente/confirmado)', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkClient({
-        grade_horarios: { data: GRADE_TERCA },
-        datas_bloqueadas: { data: [] },
-        agendamentos: { data: [{ hora_inicio: '10:00:00' }] },
-      })
+    mockDb.select.mockImplementation(
+      mkDb({
+        gradeHorarios: GRADE_TERCA,
+        datasBloqueadas: [],
+        agendamentos: [{ horaInicio: '10:00:00' }],
+      }).select
     )
 
     const resultado = await getSlotsDisponiveis('2025-03-25')
@@ -165,14 +144,12 @@ describe('getSlotsDisponiveis', () => {
   })
 
   it('exclui múltiplos slots ocupados e bloqueados simultaneamente', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkClient({
-        grade_horarios: { data: GRADE_TERCA },
-        datas_bloqueadas: {
-          data: [{ data_bloqueada: '2025-03-25', hora_inicio: '09:00:00' }],
-        },
-        agendamentos: { data: [{ hora_inicio: '10:00:00' }] },
-      })
+    mockDb.select.mockImplementation(
+      mkDb({
+        gradeHorarios: GRADE_TERCA,
+        datasBloqueadas: [{ dataBloqueada: '2025-03-25', horaInicio: '09:00:00' }],
+        agendamentos: [{ horaInicio: '10:00:00' }],
+      }).select
     )
 
     const resultado = await getSlotsDisponiveis('2025-03-25')
@@ -181,12 +158,8 @@ describe('getSlotsDisponiveis', () => {
   })
 
   it('propaga erro da query de grade_horarios', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkClient({
-        grade_horarios: { data: null, error: { message: 'DB connection failed' } },
-        datas_bloqueadas: { data: [] },
-        agendamentos: { data: [] },
-      })
+    mockDb.select.mockImplementation(
+      mkDb({ erros: { gradeHorarios: 'DB connection failed' } }).select
     )
 
     const resultado = await getSlotsDisponiveis('2025-03-25')
@@ -200,15 +173,10 @@ describe('getSlotsDisponiveis', () => {
 // ─────────────────────────────────────────────────────────────────
 describe('getDatasBlockeadas', () => {
   it('retorna lista de strings de datas bloqueadas', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkClient({
-        datas_bloqueadas: {
-          data: [
-            { data_bloqueada: '2025-04-01' },
-            { data_bloqueada: '2025-04-15' },
-          ],
-        },
-      })
+    mockDb.select.mockImplementation(
+      mkDb({
+        datasBloqueadas: [{ dataBloqueada: '2025-04-01' }, { dataBloqueada: '2025-04-15' }],
+      }).select
     )
 
     const datas = await getDatasBlockeadas()
@@ -216,22 +184,16 @@ describe('getDatasBlockeadas', () => {
   })
 
   it('retorna [] quando não há bloqueios', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkClient({
-        datas_bloqueadas: { data: [] },
-      })
-    )
+    mockDb.select.mockImplementation(mkDb({ datasBloqueadas: [] }).select)
 
     const datas = await getDatasBlockeadas()
     expect(datas).toEqual([])
   })
 
   it('retorna [] em caso de erro (sem lançar exceção)', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkClient({
-        datas_bloqueadas: { data: null, error: { message: 'DB error' } },
-      })
-    )
+    mockDb.select.mockImplementation(() => {
+      throw new Error('DB error')
+    })
 
     const datas = await getDatasBlockeadas()
     expect(datas).toEqual([])
@@ -243,18 +205,16 @@ describe('getDatasBlockeadas', () => {
 // ─────────────────────────────────────────────────────────────────
 describe('getDiasAtivos', () => {
   it('retorna dias únicos da grade ativa', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkClient({
-        grade_horarios: {
-          data: [
-            { dia_semana: 2 },
-            { dia_semana: 2 }, // duplicado
-            { dia_semana: 3 },
-            { dia_semana: 5 },
-            { dia_semana: 6 },
-          ],
-        },
-      })
+    mockDb.select.mockImplementation(
+      mkDb({
+        gradeHorarios: [
+          { diaSemana: 2 },
+          { diaSemana: 2 }, // duplicado
+          { diaSemana: 3 },
+          { diaSemana: 5 },
+          { diaSemana: 6 },
+        ],
+      }).select
     )
 
     const dias = await getDiasAtivos()
@@ -263,9 +223,7 @@ describe('getDiasAtivos', () => {
   })
 
   it('retorna [] quando não há grade ativa', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkClient({ grade_horarios: { data: [] } })
-    )
+    mockDb.select.mockImplementation(mkDb({ gradeHorarios: [] }).select)
 
     const dias = await getDiasAtivos()
     expect(dias).toEqual([])
