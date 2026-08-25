@@ -3,10 +3,12 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
-import { createAdminClient } from '@/lib/supabase/server'
+import { eq } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { logsWhatsapp } from '@/lib/db/schema'
 
-const mapearStatus = (status: string): string => {
-  const mapa: Record<string, string> = {
+const mapearStatus = (status: string): 'na_fila' | 'enviado' | 'entregue' | 'falhou' => {
+  const mapa: Record<string, 'na_fila' | 'enviado' | 'entregue' | 'falhou'> = {
     queued: 'na_fila',
     sent: 'enviado',
     delivered: 'entregue',
@@ -42,17 +44,16 @@ export async function POST(request: NextRequest) {
     return new NextResponse('OK', { status: 200 })
   }
 
-  const supabase = createAdminClient()
   const novoStatus = mapearStatus(messageStatus)
 
-  await supabase
-    .from('logs_whatsapp')
-    .update({
+  await db
+    .update(logsWhatsapp)
+    .set({
       status: novoStatus,
-      mensagem_erro: errorCode ? `Twilio error code: ${errorCode}` : null,
-      atualizado_em: new Date().toISOString(),
+      mensagemErro: errorCode ? `Twilio error code: ${errorCode}` : null,
+      atualizadoEm: new Date(),
     })
-    .eq('id_mensagem_provedor', messageSid)
+    .where(eq(logsWhatsapp.idMensagemProvedor, messageSid))
 
   return new NextResponse('OK', { status: 200 })
 }

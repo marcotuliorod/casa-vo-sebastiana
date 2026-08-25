@@ -4,7 +4,10 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { createAdminClient } from '@/lib/supabase/server'
+import { and, count, eq, inArray, notInArray, sql } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { agendamentos, clientes, datasBloqueadas, eventos, gradeHorarios, mediuns } from '@/lib/db/schema'
+import { mensagemErro, codigoPg } from '@/lib/db/errors'
 import { verificarAdmin } from '@/lib/auth/admin'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
 import { mensagemAtribuicaoMedium, mensagemCancelamento } from '@/lib/whatsapp/templates'
@@ -19,35 +22,30 @@ export async function atualizarStatusAgendamento(
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const supabase = createAdminClient()
-
-  const { error } = await supabase
-    .from('agendamentos')
-    .update({ status: novoStatus })
-    .eq('id', id)
-
-  if (error) return { erro: error.message }
+  try {
+    await db.update(agendamentos).set({ status: novoStatus }).where(eq(agendamentos.id, id))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   // GAP-01: notificar consulente por WhatsApp quando admin cancela
   if (novoStatus === 'cancelado') {
     try {
-      const { data: ag } = await supabase
-        .from('agendamentos')
-        .select('data_agendada, hora_inicio, hora_fim, token_publico, clientes(nome, telefone)')
-        .eq('id', id)
-        .single()
+      const ag = await db.query.agendamentos.findFirst({
+        where: eq(agendamentos.id, id),
+        with: { cliente: true },
+      })
 
       if (ag) {
         const provedor = getProvedorWhatsApp()
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-        const agTyped = ag as unknown as { data_agendada: string; hora_inicio: string; hora_fim: string; token_publico: string; clientes: { nome: string; telefone: string } }
         await provedor.enviarMensagem({
-          para: normalizarTelefone(agTyped.clientes.telefone),
+          para: normalizarTelefone(ag.cliente.telefone),
           corpo: mensagemCancelamento({
-            nomeCliente: agTyped.clientes.nome,
-            dataAgendada: agTyped.data_agendada,
-            horaInicio: agTyped.hora_inicio,
-            tokenPublico: agTyped.token_publico,
+            nomeCliente: ag.cliente.nome,
+            dataAgendada: ag.dataAgendada,
+            horaInicio: ag.horaInicio,
+            tokenPublico: ag.tokenPublico,
             baseUrl,
           }),
         })
@@ -85,20 +83,19 @@ export async function bloquearData(
   }
 
   const { data, hora_inicio, hora_fim, motivo } = resultado.data
-  const supabase = createAdminClient()
 
-  const { error } = await supabase.from('datas_bloqueadas').insert({
-    data_bloqueada: data,
-    hora_inicio: hora_inicio || null,
-    hora_fim: hora_fim || null,
-    motivo: motivo || null,
-  })
-
-  if (error) {
-    if (error.code === '23505') {
+  try {
+    await db.insert(datasBloqueadas).values({
+      dataBloqueada: data,
+      horaInicio: hora_inicio || null,
+      horaFim: hora_fim || null,
+      motivo: motivo || null,
+    })
+  } catch (erro) {
+    if (codigoPg(erro) === '23505') {
       return { erro: 'Este horário já está bloqueado.' }
     }
-    return { erro: error.message }
+    return { erro: mensagemErro(erro) }
   }
 
   revalidatePath('/admin/disponibilidade')
@@ -110,14 +107,11 @@ export async function desbloquearData(id: string): Promise<{ erro?: string }> {
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const supabase = createAdminClient()
-
-  const { error } = await supabase
-    .from('datas_bloqueadas')
-    .delete()
-    .eq('id', id)
-
-  if (error) return { erro: error.message }
+  try {
+    await db.delete(datasBloqueadas).where(eq(datasBloqueadas.id, id))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/disponibilidade')
   revalidatePath('/agendar') // GAP-03: invalida calendário público ao desbloquear data
@@ -139,36 +133,43 @@ export async function atualizarGradeHorarios(
     }
   }
 
-  const supabase = createAdminClient()
-
   if (horarios.length === 0) {
     // Remover todos os slots do dia
-    const { error } = await supabase
-      .from('grade_horarios')
-      .delete()
-      .eq('dia_semana', diaSemana)
-    if (error) return { erro: error.message }
+    try {
+      await db.delete(gradeHorarios).where(eq(gradeHorarios.diaSemana, diaSemana))
+    } catch (erro) {
+      return { erro: mensagemErro(erro) }
+    }
   } else {
     // 1. Upsert dos slots novos/atualizados (sem risco de perda)
-    const { error: erroUpsert } = await supabase.from('grade_horarios').upsert(
-      horarios.map((h) => ({
-        dia_semana: diaSemana,
-        hora_inicio: h.hora_inicio,
-        hora_fim: h.hora_fim,
-        ativo: h.ativo,
-      })),
-      { onConflict: 'dia_semana,hora_inicio' }
-    )
-    if (erroUpsert) return { erro: erroUpsert.message }
+    try {
+      await db
+        .insert(gradeHorarios)
+        .values(
+          horarios.map((h) => ({
+            diaSemana,
+            horaInicio: h.hora_inicio,
+            horaFim: h.hora_fim,
+            ativo: h.ativo,
+          }))
+        )
+        .onConflictDoUpdate({
+          target: [gradeHorarios.diaSemana, gradeHorarios.horaInicio],
+          set: { horaFim: sql`excluded.hora_fim`, ativo: sql`excluded.ativo` },
+        })
+    } catch (erro) {
+      return { erro: mensagemErro(erro) }
+    }
 
     // 2. Remover slots que não estão mais na lista (somente após upsert bem-sucedido)
     const horasNovas = horarios.map((h) => h.hora_inicio)
-    const { error: erroDelete } = await supabase
-      .from('grade_horarios')
-      .delete()
-      .eq('dia_semana', diaSemana)
-      .not('hora_inicio', 'in', `(${horasNovas.join(',')})`)
-    if (erroDelete) return { erro: erroDelete.message }
+    try {
+      await db
+        .delete(gradeHorarios)
+        .where(and(eq(gradeHorarios.diaSemana, diaSemana), notInArray(gradeHorarios.horaInicio, horasNovas)))
+    } catch (erro) {
+      return { erro: mensagemErro(erro) }
+    }
   }
 
   revalidatePath('/admin/disponibilidade')
@@ -181,14 +182,11 @@ export async function toggleHorarioGrade(id: string, ativo: boolean): Promise<{ 
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const supabase = createAdminClient()
-
-  const { error } = await supabase
-    .from('grade_horarios')
-    .update({ ativo })
-    .eq('id', id)
-
-  if (error) return { erro: error.message }
+  try {
+    await db.update(gradeHorarios).set({ ativo }).where(eq(gradeHorarios.id, id))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/disponibilidade')
   revalidatePath('/agendar') // BUG-05: invalida calendário público
@@ -204,14 +202,17 @@ export async function ativarNovoSlot(
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const supabase = createAdminClient()
-
-  const { error } = await supabase.from('grade_horarios').upsert(
-    { dia_semana: diaSemana, hora_inicio: horaInicio, hora_fim: horaFim, ativo: true },
-    { onConflict: 'dia_semana,hora_inicio' }
-  )
-
-  if (error) return { erro: error.message } // BUG-06: propaga erro ao invés de falhar silenciosamente
+  try {
+    await db
+      .insert(gradeHorarios)
+      .values({ diaSemana, horaInicio, horaFim, ativo: true })
+      .onConflictDoUpdate({
+        target: [gradeHorarios.diaSemana, gradeHorarios.horaInicio],
+        set: { horaFim, ativo: true },
+      })
+  } catch (erro) {
+    return { erro: mensagemErro(erro) } // BUG-06: propaga erro ao invés de falhar silenciosamente
+  }
 
   revalidatePath('/admin/disponibilidade')
   revalidatePath('/agendar') // BUG-05: invalida calendário público
@@ -241,15 +242,16 @@ export async function criarMedium(
   }
 
   const { nome, especialidade, telefone } = resultado.data
-  const supabase = createAdminClient()
 
-  const { error } = await supabase.from('mediuns').insert({
-    nome,
-    especialidade: especialidade || null,
-    telefone: telefone || null,
-  })
-
-  if (error) return { erro: error.message }
+  try {
+    await db.insert(mediuns).values({
+      nome,
+      especialidade: especialidade || null,
+      telefone: telefone || null,
+    })
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/mediuns')
   return {}
@@ -259,14 +261,11 @@ export async function toggleMediumAtivo(id: string, ativo: boolean): Promise<{ e
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const supabase = createAdminClient()
-
-  const { error } = await supabase
-    .from('mediuns')
-    .update({ ativo })
-    .eq('id', id)
-
-  if (error) return { erro: error.message }
+  try {
+    await db.update(mediuns).set({ ativo }).where(eq(mediuns.id, id))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/mediuns')
   return {}
@@ -279,44 +278,37 @@ export async function atribuirMedium(
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const supabase = createAdminClient()
-
-  const { error } = await supabase
-    .from('agendamentos')
-    .update({ medium_id: mediumId || null })
-    .eq('id', agendamentoId)
-
-  if (error) return { erro: error.message }
+  try {
+    await db
+      .update(agendamentos)
+      .set({ mediumId: mediumId || null })
+      .where(eq(agendamentos.id, agendamentoId))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   // US-27: notificar médium via WhatsApp ao ser atribuído
   if (mediumId) {
     try {
-      const [{ data: ag }, { data: med }] = await Promise.all([
-        supabase
-          .from('agendamentos')
-          .select('data_agendada, hora_inicio, hora_fim, clientes(nome)')
-          .eq('id', agendamentoId)
-          .single(),
-        supabase
-          .from('mediuns')
-          .select('nome, telefone')
-          .eq('id', mediumId)
-          .single(),
+      const [ag, medium] = await Promise.all([
+        db.query.agendamentos.findFirst({
+          where: eq(agendamentos.id, agendamentoId),
+          with: { cliente: true },
+        }),
+        db.query.mediuns.findFirst({ where: eq(mediuns.id, mediumId) }),
       ])
 
-      const telefone = (med as { nome: string; telefone: string | null } | null)?.telefone
-      if (ag && telefone) {
+      if (ag && medium?.telefone) {
         const provedor = getProvedorWhatsApp()
-        const telefoneNormalizado = normalizarTelefone(telefone)
-        const agTyped = ag as unknown as { data_agendada: string; hora_inicio: string; hora_fim: string; clientes: { nome: string } }
+        const telefoneNormalizado = normalizarTelefone(medium.telefone)
         await provedor.enviarMensagem({
           para: telefoneNormalizado,
           corpo: mensagemAtribuicaoMedium({
-            nomeMedium: (med as { nome: string }).nome,
-            nomeCliente: agTyped.clientes.nome,
-            dataAgendada: agTyped.data_agendada,
-            horaInicio: agTyped.hora_inicio,
-            horaFim: agTyped.hora_fim,
+            nomeMedium: medium.nome,
+            nomeCliente: ag.cliente.nome,
+            dataAgendada: ag.dataAgendada,
+            horaInicio: ag.horaInicio,
+            horaFim: ag.horaFim,
           }),
         })
       }
@@ -384,20 +376,21 @@ export async function criarEvento(
     return { erro: 'Hora de fim deve ser posterior à hora de início.', campo: 'hora_fim' }
   }
 
-  const supabase = createAdminClient()
-  const { error } = await supabase.from('eventos').insert({
-    titulo,
-    descricao: descricao || null,
-    data_inicio,
-    hora_inicio,
-    hora_fim,
-    capacidade,
-    recorrencia,
-    data_fim_recorrencia: data_fim_recorrencia || null,
-    lembrete_horas,
-  })
-
-  if (error) return { erro: error.message }
+  try {
+    await db.insert(eventos).values({
+      titulo,
+      descricao: descricao || null,
+      dataInicio: data_inicio,
+      horaInicio: hora_inicio,
+      horaFim: hora_fim,
+      capacidade,
+      recorrencia,
+      dataFimRecorrencia: data_fim_recorrencia || null,
+      lembreteHoras: lembrete_horas,
+    })
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/eventos')
   revalidatePath('/agendar/eventos')
@@ -428,23 +421,24 @@ export async function editarEvento(
     return { erro: 'Hora de fim deve ser posterior à hora de início.', campo: 'hora_fim' }
   }
 
-  const supabase = createAdminClient()
-  const { error } = await supabase
-    .from('eventos')
-    .update({
-      titulo,
-      descricao: descricao || null,
-      data_inicio,
-      hora_inicio,
-      hora_fim,
-      capacidade,
-      recorrencia,
-      data_fim_recorrencia: data_fim_recorrencia || null,
-      lembrete_horas,
-    })
-    .eq('id', id)
-
-  if (error) return { erro: error.message }
+  try {
+    await db
+      .update(eventos)
+      .set({
+        titulo,
+        descricao: descricao || null,
+        dataInicio: data_inicio,
+        horaInicio: hora_inicio,
+        horaFim: hora_fim,
+        capacidade,
+        recorrencia,
+        dataFimRecorrencia: data_fim_recorrencia || null,
+        lembreteHoras: lembrete_horas,
+      })
+      .where(eq(eventos.id, id))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/eventos')
   revalidatePath('/agendar/eventos')
@@ -458,10 +452,11 @@ export async function toggleEventoAtivo(
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const supabase = createAdminClient()
-  const { error } = await supabase.from('eventos').update({ ativo }).eq('id', id)
-
-  if (error) return { erro: error.message }
+  try {
+    await db.update(eventos).set({ ativo }).where(eq(eventos.id, id))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/eventos')
   revalidatePath('/agendar/eventos')
@@ -472,24 +467,23 @@ export async function excluirEvento(id: string): Promise<{ erro?: string }> {
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const supabase = createAdminClient()
-
   // Bloqueia exclusão se houver inscrições ativas
-  const { count } = await supabase
-    .from('agendamentos')
-    .select('*', { count: 'exact', head: true })
-    .eq('evento_id', id)
-    .in('status', ['pendente', 'confirmado'])
+  const [{ value: totalAtivos }] = await db
+    .select({ value: count() })
+    .from(agendamentos)
+    .where(and(eq(agendamentos.eventoId, id), inArray(agendamentos.status, ['pendente', 'confirmado'])))
 
-  if ((count ?? 0) > 0) {
-    return { erro: `Não é possível excluir: há ${count} inscrição(ões) ativa(s) neste evento. Cancele-as primeiro.` }
+  if (totalAtivos > 0) {
+    return { erro: `Não é possível excluir: há ${totalAtivos} inscrição(ões) ativa(s) neste evento. Cancele-as primeiro.` }
   }
 
-  // Remove agendamentos históricos (cancelados/realizados) antes de deletar o evento
-  await supabase.from('agendamentos').delete().eq('evento_id', id)
-
-  const { error } = await supabase.from('eventos').delete().eq('id', id)
-  if (error) return { erro: error.message }
+  try {
+    // Remove agendamentos históricos (cancelados/realizados) antes de deletar o evento
+    await db.delete(agendamentos).where(eq(agendamentos.eventoId, id))
+    await db.delete(eventos).where(eq(eventos.id, id))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/eventos')
   revalidatePath('/agendar/eventos')
@@ -528,13 +522,14 @@ export async function editarAgendamento(
     return { erro: 'Hora de fim deve ser posterior à hora de início.', campo: 'hora_fim' }
   }
 
-  const supabase = createAdminClient()
-  const { error } = await supabase
-    .from('agendamentos')
-    .update({ data_agendada, hora_inicio, hora_fim, notas: notas || null })
-    .eq('id', id)
-
-  if (error) return { erro: error.message }
+  try {
+    await db
+      .update(agendamentos)
+      .set({ dataAgendada: data_agendada, horaInicio: hora_inicio, horaFim: hora_fim, notas: notas || null })
+      .where(eq(agendamentos.id, id))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/agendamentos')
   revalidatePath('/admin')
@@ -545,9 +540,11 @@ export async function excluirAgendamento(id: string): Promise<{ erro?: string }>
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const supabase = createAdminClient()
-  const { error } = await supabase.from('agendamentos').delete().eq('id', id)
-  if (error) return { erro: error.message }
+  try {
+    await db.delete(agendamentos).where(eq(agendamentos.id, id))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/agendamentos')
   revalidatePath('/admin')
@@ -581,14 +578,15 @@ export async function editarCliente(
   }
 
   const { nome, telefone, email, notas } = resultado.data
-  const supabase = createAdminClient()
 
-  const { error } = await supabase
-    .from('clientes')
-    .update({ nome, telefone, email: email || null, notas: notas || null })
-    .eq('id', id)
-
-  if (error) return { erro: error.message }
+  try {
+    await db
+      .update(clientes)
+      .set({ nome, telefone, email: email || null, notas: notas || null })
+      .where(eq(clientes.id, id))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/consulentes')
   return null
@@ -598,20 +596,20 @@ export async function excluirCliente(id: string): Promise<{ erro?: string }> {
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const supabase = createAdminClient()
+  const [{ value: totalAtivos }] = await db
+    .select({ value: count() })
+    .from(agendamentos)
+    .where(and(eq(agendamentos.clienteId, id), inArray(agendamentos.status, ['pendente', 'confirmado'])))
 
-  const { count } = await supabase
-    .from('agendamentos')
-    .select('*', { count: 'exact', head: true })
-    .eq('cliente_id', id)
-    .in('status', ['pendente', 'confirmado'])
-
-  if ((count ?? 0) > 0) {
-    return { erro: `Não é possível excluir: há ${count} agendamento(s) ativo(s) para este consulente.` }
+  if (totalAtivos > 0) {
+    return { erro: `Não é possível excluir: há ${totalAtivos} agendamento(s) ativo(s) para este consulente.` }
   }
 
-  const { error } = await supabase.from('clientes').delete().eq('id', id)
-  if (error) return { erro: error.message }
+  try {
+    await db.delete(clientes).where(eq(clientes.id, id))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/consulentes')
   return {}
@@ -634,14 +632,15 @@ export async function editarMedium(
   if (!resultado.success) return { erro: resultado.error.errors[0].message }
 
   const { nome, especialidade, telefone } = resultado.data
-  const supabase = createAdminClient()
 
-  const { error } = await supabase
-    .from('mediuns')
-    .update({ nome, especialidade: especialidade || null, telefone: telefone || null })
-    .eq('id', id)
-
-  if (error) return { erro: error.message }
+  try {
+    await db
+      .update(mediuns)
+      .set({ nome, especialidade: especialidade || null, telefone: telefone || null })
+      .where(eq(mediuns.id, id))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/mediuns')
   return null
@@ -651,13 +650,13 @@ export async function excluirMedium(id: string): Promise<{ erro?: string }> {
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const supabase = createAdminClient()
-
-  // Remove vínculo de agendamentos antes de excluir
-  await supabase.from('agendamentos').update({ medium_id: null }).eq('medium_id', id)
-
-  const { error } = await supabase.from('mediuns').delete().eq('id', id)
-  if (error) return { erro: error.message }
+  try {
+    // Remove vínculo de agendamentos antes de excluir
+    await db.update(agendamentos).set({ mediumId: null }).where(eq(agendamentos.mediumId, id))
+    await db.delete(mediuns).where(eq(mediuns.id, id))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath('/admin/mediuns')
   revalidatePath('/admin/agendamentos')

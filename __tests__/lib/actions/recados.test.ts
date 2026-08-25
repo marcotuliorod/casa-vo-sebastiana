@@ -3,14 +3,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
-vi.mock('@/lib/supabase/server', () => ({
-  createAdminClient: vi.fn(),
+vi.mock('@/lib/db', () => ({
+  db: { insert: vi.fn(), update: vi.fn() },
 }))
 vi.mock('@/lib/auth/config', () => ({
   auth: vi.fn(),
 }))
 
-import { createAdminClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
 import { auth } from '@/lib/auth/config'
 import {
   criarRecado,
@@ -19,41 +19,22 @@ import {
   toggleFixadoRecado,
 } from '@/lib/actions/recados'
 
-const mockCreateAdminClient = createAdminClient as ReturnType<typeof vi.fn>
+const mockDb = db as unknown as { insert: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> }
 const mockAuth = auth as ReturnType<typeof vi.fn>
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-type TableResp = { data?: unknown; error?: { message: string } | null }
-
-function mkDbClient(tableResponses: Record<string, TableResp | TableResp[]>) {
-  const callCounts: Record<string, number> = {}
-
-  function mkChain(resp: TableResp): Record<string, unknown> {
-    const chain: Record<string, unknown> = {
-      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
-        Promise.resolve(resp).then(res, rej),
-      catch: (rej: (e: unknown) => unknown) => Promise.resolve(resp).catch(rej),
-      finally: (f: () => void) => Promise.resolve(resp).finally(f),
-      [Symbol.toStringTag]: 'Promise',
-    }
-    ;['select', 'insert', 'update', 'upsert', 'delete', 'eq', 'neq', 'order', 'limit'].forEach(
-      (m) => { chain[m] = vi.fn().mockReturnValue(chain) }
-    )
-    return chain
-  }
-
-  return {
-    from: vi.fn((tabela: string) => {
-      const raw = tableResponses[tabela]
-      const idx = callCounts[tabela] ?? 0
-      callCounts[tabela] = idx + 1
-      const resp: TableResp = Array.isArray(raw)
-        ? (raw[idx] ?? raw[raw.length - 1])
-        : (raw ?? { data: [], error: null })
-      return mkChain(resp)
-    }),
-  }
+function mkInsertOk() {
+  return { values: vi.fn(() => Promise.resolve([])) }
+}
+function mkInsertErr(message: string) {
+  return { values: vi.fn(() => Promise.reject(new Error(message))) }
+}
+function mkUpdateOk() {
+  return { set: vi.fn(() => ({ where: vi.fn(() => Promise.resolve([])) })) }
+}
+function mkUpdateErr(message: string) {
+  return { set: vi.fn(() => ({ where: vi.fn(() => Promise.reject(new Error(message))) })) }
 }
 
 function mkSessionClient(user: { email: string; id: string } | null) {
@@ -120,9 +101,7 @@ describe('criarRecado', () => {
   })
 
   it('cria recado normal com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ recados: { data: null, error: null } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertOk())
     const fd = makeFormData({
       titulo: 'Aviso Importante',
       conteudo: 'Reunião às 19h na sede',
@@ -133,9 +112,7 @@ describe('criarRecado', () => {
   })
 
   it('cria recado urgente fixado com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ recados: { data: null, error: null } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertOk())
     const fd = makeFormData({
       titulo: 'ATENÇÃO',
       conteudo: 'Sessão extraordinária hoje!',
@@ -147,9 +124,7 @@ describe('criarRecado', () => {
   })
 
   it('usa prioridade "normal" como padrão quando não informada', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ recados: { data: null, error: null } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertOk())
     const fd = makeFormData({
       titulo: 'Aviso Simples',
       conteudo: 'Informação de rotina',
@@ -159,9 +134,7 @@ describe('criarRecado', () => {
   })
 
   it('retorna erro quando DB falha', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ recados: { data: null, error: { message: 'insert error' } } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertErr('insert error'))
     const fd = makeFormData({
       titulo: 'Aviso',
       conteudo: 'Conteúdo',
@@ -193,9 +166,7 @@ describe('editarRecado', () => {
   })
 
   it('edita recado com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ recados: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateOk())
     const fd = makeFormData({
       titulo: 'Título Atualizado',
       conteudo: 'Conteúdo novo',
@@ -214,18 +185,14 @@ describe('editarRecado', () => {
   })
 
   it('retorna erro quando DB falha', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ recados: { data: null, error: { message: 'update error' } } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateErr('update error'))
     const fd = makeFormData({ titulo: 'Título OK', conteudo: 'Conteúdo OK' })
     const resultado = await editarRecado('rec-1', null, fd)
     expect(resultado?.erro).toBe('Erro ao editar recado.')
   })
 
   it('reseta fixado=false quando checkbox não está marcado', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ recados: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateOk())
     // Sem 'fixado: on' → fixado não será 'on' → coerce.boolean() → false
     const fd = makeFormData({ titulo: 'Aviso', conteudo: 'Conteúdo' })
     const resultado = await editarRecado('rec-1', null, fd)
@@ -244,17 +211,13 @@ describe('excluirRecado', () => {
   })
 
   it('faz soft delete (ativo=false) com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ recados: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateOk())
     const resultado = await excluirRecado('rec-1')
     expect(resultado).toEqual({})
   })
 
   it('retorna erro quando DB falha', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ recados: { data: null, error: { message: 'update fail' } } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateErr('update fail'))
     const resultado = await excluirRecado('rec-1')
     expect(resultado).toEqual({ erro: 'Erro ao excluir recado.' })
   })
@@ -271,25 +234,19 @@ describe('toggleFixadoRecado', () => {
   })
 
   it('fixa recado com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ recados: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateOk())
     const resultado = await toggleFixadoRecado('rec-1', true)
     expect(resultado).toEqual({})
   })
 
   it('desfixa recado com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ recados: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateOk())
     const resultado = await toggleFixadoRecado('rec-1', false)
     expect(resultado).toEqual({})
   })
 
   it('retorna erro quando DB falha', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ recados: { data: null, error: { message: 'update fail' } } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateErr('update fail'))
     const resultado = await toggleFixadoRecado('rec-1', true)
     expect(resultado).toEqual({ erro: 'Erro ao atualizar recado.' })
   })
@@ -314,9 +271,7 @@ describe('verificarAdmin em recados — whitelist', () => {
     mockAuth.mockResolvedValue(
       mkSessionClient({ email: 'admin@test.com', id: 'uid-admin' })
     )
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ recados: { data: null, error: null } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertOk())
     const fd = makeFormData({ titulo: 'Aviso', conteudo: 'Texto válido' })
     const resultado = await criarRecado(null, fd)
     expect(resultado).toBeNull()

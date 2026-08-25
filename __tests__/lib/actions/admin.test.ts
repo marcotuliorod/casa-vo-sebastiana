@@ -3,8 +3,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // ─── Mocks globais ─────────────────────────────────────────────────────────────
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
-vi.mock('@/lib/supabase/server', () => ({
-  createAdminClient: vi.fn(),
+vi.mock('@/lib/db', () => ({
+  db: {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    query: {
+      agendamentos: { findFirst: vi.fn() },
+      mediuns: { findFirst: vi.fn() },
+    },
+  },
 }))
 vi.mock('@/lib/auth/config', () => ({
   auth: vi.fn(),
@@ -20,7 +29,7 @@ vi.mock('@/lib/utils/phone', () => ({
   normalizarTelefone: vi.fn((t: string) => t),
 }))
 
-import { createAdminClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
 import { auth } from '@/lib/auth/config'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
 import {
@@ -45,52 +54,56 @@ import {
   excluirMedium,
 } from '@/lib/actions/admin'
 
-const mockCreateAdminClient = createAdminClient as ReturnType<typeof vi.fn>
+type MockDb = {
+  select: ReturnType<typeof vi.fn>
+  insert: ReturnType<typeof vi.fn>
+  update: ReturnType<typeof vi.fn>
+  delete: ReturnType<typeof vi.fn>
+  query: {
+    agendamentos: { findFirst: ReturnType<typeof vi.fn> }
+    mediuns: { findFirst: ReturnType<typeof vi.fn> }
+  }
+}
+const mockDb = db as unknown as MockDb
 const mockAuth = auth as ReturnType<typeof vi.fn>
 const mockGetProvedorWhatsApp = getProvedorWhatsApp as ReturnType<typeof vi.fn>
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+// Mocks do encadeamento fluente do Drizzle. Cada helper cobre a "forma" de
+// chain usada por lib/actions/admin.ts para aquele tipo de operação.
 
-type TableResp = { data?: unknown; error?: { message: string; code?: string } | null; count?: number | null }
+/** db.select({value: count()}).from(t).where(cond) → [{ value }] */
+function mkCountChain(value: number) {
+  return { from: vi.fn(() => ({ where: vi.fn(() => Promise.resolve([{ value }])) })) }
+}
+
+/** db.update(t).set(v).where(cond) */
+function mkUpdateChain(erro?: Error) {
+  return {
+    set: vi.fn(() => ({
+      where: vi.fn(() => (erro ? Promise.reject(erro) : Promise.resolve([]))),
+    })),
+  }
+}
+
+/** db.delete(t).where(cond) */
+function mkDeleteChain(erro?: Error) {
+  return { where: vi.fn(() => (erro ? Promise.reject(erro) : Promise.resolve([]))) }
+}
 
 /**
- * Cria um mock do Supabase Client que suporta:
- * - Encadeamento fluente (select, eq, update, etc.)
- * - Responses diferentes por tabela
- * - Sequências de responses para a mesma tabela (array)
+ * db.insert(t).values(v) — thenable direto — e também
+ * db.insert(t).values(v).onConflictDoUpdate(...) (usado na grade de horários).
  */
-function mkDbClient(tableResponses: Record<string, TableResp | TableResp[]>) {
-  const callCounts: Record<string, number> = {}
-
-  function mkChain(resp: TableResp): Record<string, unknown> {
-    const chain: Record<string, unknown> = {
-      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
-        Promise.resolve(resp).then(res, rej),
-      catch: (rej: (e: unknown) => unknown) => Promise.resolve(resp).catch(rej),
-      finally: (f: () => void) => Promise.resolve(resp).finally(f),
-      [Symbol.toStringTag]: 'Promise',
-    }
-    const methods = [
-      'select', 'insert', 'update', 'upsert', 'delete',
-      'eq', 'neq', 'gte', 'lte', 'in', 'not', 'is', 'ilike',
-      'order', 'limit', 'single', 'maybeSingle',
-    ]
-    methods.forEach((m) => {
-      chain[m] = vi.fn().mockReturnValue(chain)
-    })
-    return chain
-  }
-
+function mkInsertChain(erro?: Error) {
+  const resolvePromise = () => (erro ? Promise.reject(erro) : Promise.resolve([]))
   return {
-    from: vi.fn((tabela: string) => {
-      const raw = tableResponses[tabela]
-      const idx = callCounts[tabela] ?? 0
-      callCounts[tabela] = idx + 1
-      const resp: TableResp = Array.isArray(raw)
-        ? (raw[idx] ?? raw[raw.length - 1])
-        : (raw ?? { data: [], error: null })
-      return mkChain(resp)
-    }),
+    values: vi.fn(() => ({
+      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
+        resolvePromise().then(res, rej),
+      catch: (rej: (e: unknown) => unknown) => resolvePromise().catch(rej),
+      onConflictDoUpdate: vi.fn(() => resolvePromise()),
+    })),
   }
 }
 
@@ -111,9 +124,7 @@ beforeEach(() => {
   process.env.ADMIN_EMAILS = '' // sem restrição de email (qualquer user autenticado é admin)
 
   // Por padrão, retornar admin autorizado
-  mockAuth.mockResolvedValue(
-    mkSessionClient({ email: 'admin@test.com', id: 'uid-admin' })
-  )
+  mockAuth.mockResolvedValue(mkSessionClient({ email: 'admin@test.com', id: 'uid-admin' }))
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -128,18 +139,14 @@ describe('atualizarStatusAgendamento', () => {
   })
 
   it('retorna erro quando DB falha no update', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ agendamentos: { data: null, error: { message: 'DB error' } } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain(new Error('DB error')))
 
     const resultado = await atualizarStatusAgendamento('ag-1', 'confirmado')
     expect(resultado).toEqual({ erro: 'DB error' })
   })
 
   it('atualiza status com sucesso (sem WhatsApp para status != cancelado)', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ agendamentos: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
 
     const resultado = await atualizarStatusAgendamento('ag-1', 'confirmado')
     expect(resultado).toEqual({})
@@ -149,24 +156,14 @@ describe('atualizarStatusAgendamento', () => {
   it('dispara WhatsApp ao cancelar agendamento', async () => {
     const mockEnviar = vi.fn().mockResolvedValue(undefined)
     mockGetProvedorWhatsApp.mockReturnValue({ enviarMensagem: mockEnviar })
-
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        agendamentos: [
-          { data: null, error: null }, // update
-          {
-            data: {
-              data_agendada: '2025-04-01',
-              hora_inicio: '09:00',
-              hora_fim: '10:00',
-              token_publico: 'tok-abc',
-              clientes: { nome: 'Maria', telefone: '11999999999' },
-            },
-            error: null,
-          }, // select para WhatsApp
-        ],
-      })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
+    mockDb.query.agendamentos.findFirst.mockResolvedValue({
+      dataAgendada: '2025-04-01',
+      horaInicio: '09:00',
+      horaFim: '10:00',
+      tokenPublico: 'tok-abc',
+      cliente: { nome: 'Maria', telefone: '11999999999' },
+    })
 
     const resultado = await atualizarStatusAgendamento('ag-1', 'cancelado')
     expect(resultado).toEqual({})
@@ -177,24 +174,14 @@ describe('atualizarStatusAgendamento', () => {
     mockGetProvedorWhatsApp.mockReturnValue({
       enviarMensagem: vi.fn().mockRejectedValue(new Error('timeout')),
     })
-
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        agendamentos: [
-          { data: null, error: null },
-          {
-            data: {
-              data_agendada: '2025-04-01',
-              hora_inicio: '09:00',
-              hora_fim: '10:00',
-              token_publico: 'tok-abc',
-              clientes: { nome: 'Pedro', telefone: '11988888888' },
-            },
-            error: null,
-          },
-        ],
-      })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
+    mockDb.query.agendamentos.findFirst.mockResolvedValue({
+      dataAgendada: '2025-04-01',
+      horaInicio: '09:00',
+      horaFim: '10:00',
+      tokenPublico: 'tok-abc',
+      cliente: { nome: 'Pedro', telefone: '11988888888' },
+    })
 
     const resultado = await atualizarStatusAgendamento('ag-1', 'cancelado')
     expect(resultado).toEqual({}) // erro silenciado
@@ -219,40 +206,29 @@ describe('bloquearData', () => {
   })
 
   it('bloqueia dia inteiro (sem hora) com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ datas_bloqueadas: { data: null, error: null } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertChain())
     const fd = makeFormData({ data: '2025-05-01' })
     const resultado = await bloquearData(null, fd)
     expect(resultado).toEqual({})
   })
 
   it('bloqueia horário específico com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ datas_bloqueadas: { data: null, error: null } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertChain())
     const fd = makeFormData({ data: '2025-05-01', hora_inicio: '09:00', hora_fim: '10:00' })
     const resultado = await bloquearData(null, fd)
     expect(resultado).toEqual({})
   })
 
   it('retorna erro de duplicação (código 23505)', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        datas_bloqueadas: { data: null, error: { message: 'duplicate', code: '23505' } },
-      })
-    )
+    const erro = Object.assign(new Error('duplicate'), { cause: { code: '23505' } })
+    mockDb.insert.mockReturnValue(mkInsertChain(erro))
     const fd = makeFormData({ data: '2025-05-01', hora_inicio: '09:00' })
     const resultado = await bloquearData(null, fd)
     expect(resultado).toEqual({ erro: 'Este horário já está bloqueado.' })
   })
 
   it('retorna erro genérico de DB', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        datas_bloqueadas: { data: null, error: { message: 'constraint violation' } },
-      })
-    )
+    mockDb.insert.mockReturnValue(mkInsertChain(new Error('constraint violation')))
     const fd = makeFormData({ data: '2025-05-01' })
     const resultado = await bloquearData(null, fd)
     expect(resultado).toEqual({ erro: 'constraint violation' })
@@ -264,17 +240,13 @@ describe('bloquearData', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('desbloquearData', () => {
   it('desbloqueia com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ datas_bloqueadas: { data: null, error: null } })
-    )
+    mockDb.delete.mockReturnValue(mkDeleteChain())
     const resultado = await desbloquearData('bloq-1')
     expect(resultado).toEqual({})
   })
 
   it('retorna erro de DB', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ datas_bloqueadas: { data: null, error: { message: 'not found' } } })
-    )
+    mockDb.delete.mockReturnValue(mkDeleteChain(new Error('not found')))
     const resultado = await desbloquearData('bloq-1')
     expect(resultado).toEqual({ erro: 'not found' })
   })
@@ -291,25 +263,19 @@ describe('desbloquearData', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('toggleHorarioGrade', () => {
   it('ativa um slot com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ grade_horarios: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
     const resultado = await toggleHorarioGrade('slot-1', true)
     expect(resultado).toEqual({})
   })
 
   it('desativa um slot com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ grade_horarios: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
     const resultado = await toggleHorarioGrade('slot-1', false)
     expect(resultado).toEqual({})
   })
 
   it('retorna erro de DB', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ grade_horarios: { data: null, error: { message: 'DB fail' } } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain(new Error('DB fail')))
     const resultado = await toggleHorarioGrade('slot-1', true)
     expect(resultado).toEqual({ erro: 'DB fail' })
   })
@@ -326,17 +292,13 @@ describe('toggleHorarioGrade', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('ativarNovoSlot', () => {
   it('insere novo slot com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ grade_horarios: { data: null, error: null } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertChain())
     const resultado = await ativarNovoSlot(2, '09:00', '10:00')
     expect(resultado).toEqual({})
   })
 
   it('propaga erro de DB (não falha silenciosamente)', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ grade_horarios: { data: null, error: { message: 'upsert fail' } } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertChain(new Error('upsert fail')))
     const resultado = await ativarNovoSlot(2, '09:00', '10:00')
     expect(resultado).toEqual({ erro: 'upsert fail' })
   })
@@ -354,22 +316,14 @@ describe('atualizarGradeHorarios', () => {
   })
 
   it('remove todos os slots quando lista está vazia', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ grade_horarios: { data: null, error: null } })
-    )
+    mockDb.delete.mockReturnValue(mkDeleteChain())
     const resultado = await atualizarGradeHorarios(2, [])
     expect(resultado).toEqual({})
   })
 
   it('faz upsert e remove slots obsoletos com lista preenchida', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        grade_horarios: [
-          { data: null, error: null }, // upsert
-          { data: null, error: null }, // delete obsoletos
-        ],
-      })
-    )
+    mockDb.insert.mockReturnValue(mkInsertChain())
+    mockDb.delete.mockReturnValue(mkDeleteChain())
     const resultado = await atualizarGradeHorarios(2, [
       { hora_inicio: '09:00', hora_fim: '10:00', ativo: true },
     ])
@@ -377,11 +331,7 @@ describe('atualizarGradeHorarios', () => {
   })
 
   it('retorna erro se upsert falhar', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        grade_horarios: [{ data: null, error: { message: 'upsert error' } }],
-      })
-    )
+    mockDb.insert.mockReturnValue(mkInsertChain(new Error('upsert error')))
     const resultado = await atualizarGradeHorarios(2, [
       { hora_inicio: '09:00', hora_fim: '10:00', ativo: true },
     ])
@@ -413,27 +363,21 @@ describe('criarMedium', () => {
   })
 
   it('cria médium com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ mediuns: { data: null, error: null } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertChain())
     const fd = makeFormData({ nome: 'Maria Silva', especialidade: 'Cura', telefone: '11999999999' })
     const resultado = await criarMedium(null, fd)
     expect(resultado).toEqual({})
   })
 
   it('retorna erro de DB', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ mediuns: { data: null, error: { message: 'insert error' } } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertChain(new Error('insert error')))
     const fd = makeFormData({ nome: 'Maria Silva' })
     const resultado = await criarMedium(null, fd)
     expect(resultado).toEqual({ erro: 'insert error' })
   })
 
   it('cria médium sem especialidade e telefone (campos opcionais)', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ mediuns: { data: null, error: null } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertChain())
     const fd = makeFormData({ nome: 'Carlos Lima' })
     const resultado = await criarMedium(null, fd)
     expect(resultado).toEqual({})
@@ -445,25 +389,19 @@ describe('criarMedium', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('toggleMediumAtivo', () => {
   it('ativa médium com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ mediuns: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
     const resultado = await toggleMediumAtivo('med-1', true)
     expect(resultado).toEqual({})
   })
 
   it('desativa médium com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ mediuns: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
     const resultado = await toggleMediumAtivo('med-1', false)
     expect(resultado).toEqual({})
   })
 
   it('retorna erro de DB', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ mediuns: { data: null, error: { message: 'update fail' } } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain(new Error('update fail')))
     const resultado = await toggleMediumAtivo('med-1', true)
     expect(resultado).toEqual({ erro: 'update fail' })
   })
@@ -477,23 +415,21 @@ describe('atribuirMedium', () => {
     mockGetProvedorWhatsApp.mockReturnValue({
       enviarMensagem: vi.fn().mockRejectedValue(new Error('no phone')),
     })
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        agendamentos: [
-          { data: null, error: null }, // update
-          { data: { data_agendada: '2025-04-01', hora_inicio: '09:00', hora_fim: '10:00', clientes: { nome: 'Ana' } }, error: null },
-        ],
-        mediuns: { data: { nome: 'João', telefone: null }, error: null },
-      })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
+    mockDb.query.agendamentos.findFirst.mockResolvedValue({
+      dataAgendada: '2025-04-01',
+      horaInicio: '09:00',
+      horaFim: '10:00',
+      cliente: { nome: 'Ana' },
+    })
+    mockDb.query.mediuns.findFirst.mockResolvedValue({ nome: 'João', telefone: null })
+
     const resultado = await atribuirMedium('ag-1', 'med-1')
     expect(resultado).toEqual({})
   })
 
   it('retorna erro de DB no update', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ agendamentos: { data: null, error: { message: 'update fail' } } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain(new Error('update fail')))
     const resultado = await atribuirMedium('ag-1', 'med-1')
     expect(resultado).toEqual({ erro: 'update fail' })
   })
@@ -501,25 +437,21 @@ describe('atribuirMedium', () => {
   it('envia WhatsApp quando médium tem telefone', async () => {
     const mockEnviar = vi.fn().mockResolvedValue(undefined)
     mockGetProvedorWhatsApp.mockReturnValue({ enviarMensagem: mockEnviar })
-
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        agendamentos: [
-          { data: null, error: null },
-          { data: { data_agendada: '2025-04-01', hora_inicio: '09:00', hora_fim: '10:00', clientes: { nome: 'Ana' } }, error: null },
-        ],
-        mediuns: { data: { nome: 'João', telefone: '11988888888' }, error: null },
-      })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
+    mockDb.query.agendamentos.findFirst.mockResolvedValue({
+      dataAgendada: '2025-04-01',
+      horaInicio: '09:00',
+      horaFim: '10:00',
+      cliente: { nome: 'Ana' },
+    })
+    mockDb.query.mediuns.findFirst.mockResolvedValue({ nome: 'João', telefone: '11988888888' })
 
     await atribuirMedium('ag-1', 'med-1')
     expect(mockEnviar).toHaveBeenCalledOnce()
   })
 
   it('não envia WhatsApp quando mediumId é vazio (remoção de atribuição)', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ agendamentos: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
     const resultado = await atribuirMedium('ag-1', '')
     expect(resultado).toEqual({})
     expect(mockGetProvedorWhatsApp).not.toHaveBeenCalled()
@@ -541,9 +473,7 @@ describe('criarEvento', () => {
   }
 
   it('cria evento com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ eventos: { data: null, error: null } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertChain())
     const fd = makeFormData(eventValido)
     const resultado = await criarEvento(null, fd)
     expect(resultado).toBeNull()
@@ -569,9 +499,7 @@ describe('criarEvento', () => {
   })
 
   it('retorna erro de DB', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ eventos: { data: null, error: { message: 'insert fail' } } })
-    )
+    mockDb.insert.mockReturnValue(mkInsertChain(new Error('insert fail')))
     const fd = makeFormData(eventValido)
     const resultado = await criarEvento(null, fd)
     expect(resultado?.erro).toBe('insert fail')
@@ -600,9 +528,7 @@ describe('editarEvento', () => {
   }
 
   it('edita evento com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ eventos: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
     const fd = makeFormData(eventoValido)
     const resultado = await editarEvento('ev-1', null, fd)
     expect(resultado).toBeNull()
@@ -627,17 +553,13 @@ describe('editarEvento', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('toggleEventoAtivo', () => {
   it('ativa evento com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ eventos: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
     const resultado = await toggleEventoAtivo('ev-1', true)
     expect(resultado).toEqual({})
   })
 
   it('retorna erro de DB', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ eventos: { data: null, error: { message: 'update fail' } } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain(new Error('update fail')))
     const resultado = await toggleEventoAtivo('ev-1', false)
     expect(resultado).toEqual({ erro: 'update fail' })
   })
@@ -648,37 +570,25 @@ describe('toggleEventoAtivo', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('excluirEvento', () => {
   it('bloqueia exclusão quando há inscrições ativas', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ agendamentos: { data: null, error: null, count: 3 } })
-    )
+    mockDb.select.mockReturnValue(mkCountChain(3))
     const resultado = await excluirEvento('ev-1')
     expect(resultado.erro).toMatch(/3 inscrição/)
   })
 
   it('exclui evento sem inscrições ativas', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        agendamentos: [
-          { data: null, error: null, count: 0 }, // count check
-          { data: null, error: null },            // delete históricos
-        ],
-        eventos: { data: null, error: null },     // delete evento
-      })
-    )
+    mockDb.select.mockReturnValue(mkCountChain(0))
+    mockDb.delete
+      .mockReturnValueOnce(mkDeleteChain()) // delete históricos (agendamentos)
+      .mockReturnValueOnce(mkDeleteChain()) // delete evento
     const resultado = await excluirEvento('ev-1')
     expect(resultado).toEqual({})
   })
 
   it('retorna erro de DB na exclusão do evento', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        agendamentos: [
-          { data: null, error: null, count: 0 },
-          { data: null, error: null },
-        ],
-        eventos: { data: null, error: { message: 'delete fail' } },
-      })
-    )
+    mockDb.select.mockReturnValue(mkCountChain(0))
+    mockDb.delete
+      .mockReturnValueOnce(mkDeleteChain()) // delete históricos ok
+      .mockReturnValueOnce(mkDeleteChain(new Error('delete fail'))) // delete evento falha
     const resultado = await excluirEvento('ev-1')
     expect(resultado).toEqual({ erro: 'delete fail' })
   })
@@ -701,9 +611,7 @@ describe('editarAgendamento', () => {
   }
 
   it('edita agendamento com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ agendamentos: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
     const fd = makeFormData(agValido)
     const resultado = await editarAgendamento('ag-1', null, fd)
     expect(resultado).toBeNull()
@@ -723,9 +631,7 @@ describe('editarAgendamento', () => {
   })
 
   it('retorna erro de DB', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ agendamentos: { data: null, error: { message: 'update fail' } } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain(new Error('update fail')))
     const fd = makeFormData(agValido)
     const resultado = await editarAgendamento('ag-1', null, fd)
     expect(resultado?.erro).toBe('update fail')
@@ -737,17 +643,13 @@ describe('editarAgendamento', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('excluirAgendamento', () => {
   it('exclui agendamento com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ agendamentos: { data: null, error: null } })
-    )
+    mockDb.delete.mockReturnValue(mkDeleteChain())
     const resultado = await excluirAgendamento('ag-1')
     expect(resultado).toEqual({})
   })
 
   it('retorna erro de DB', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ agendamentos: { data: null, error: { message: 'delete fail' } } })
-    )
+    mockDb.delete.mockReturnValue(mkDeleteChain(new Error('delete fail')))
     const resultado = await excluirAgendamento('ag-1')
     expect(resultado).toEqual({ erro: 'delete fail' })
   })
@@ -771,9 +673,7 @@ describe('editarCliente', () => {
   }
 
   it('edita cliente com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ clientes: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
     const fd = makeFormData(clienteValido)
     const resultado = await editarCliente('cli-1', null, fd)
     expect(resultado).toBeNull()
@@ -798,9 +698,7 @@ describe('editarCliente', () => {
   })
 
   it('aceita email vazio (campo opcional)', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ clientes: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
     const fd = makeFormData({ ...clienteValido, email: '' })
     const resultado = await editarCliente('cli-1', null, fd)
     expect(resultado).toBeNull()
@@ -812,31 +710,21 @@ describe('editarCliente', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('excluirCliente', () => {
   it('bloqueia exclusão quando há agendamentos ativos', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ agendamentos: { data: null, error: null, count: 2 } })
-    )
+    mockDb.select.mockReturnValue(mkCountChain(2))
     const resultado = await excluirCliente('cli-1')
     expect(resultado.erro).toMatch(/2 agendamento/)
   })
 
   it('exclui cliente sem agendamentos ativos', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        agendamentos: { data: null, error: null, count: 0 },
-        clientes: { data: null, error: null },
-      })
-    )
+    mockDb.select.mockReturnValue(mkCountChain(0))
+    mockDb.delete.mockReturnValue(mkDeleteChain())
     const resultado = await excluirCliente('cli-1')
     expect(resultado).toEqual({})
   })
 
   it('retorna erro de DB na exclusão', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        agendamentos: { data: null, error: null, count: 0 },
-        clientes: { data: null, error: { message: 'delete fail' } },
-      })
-    )
+    mockDb.select.mockReturnValue(mkCountChain(0))
+    mockDb.delete.mockReturnValue(mkDeleteChain(new Error('delete fail')))
     const resultado = await excluirCliente('cli-1')
     expect(resultado).toEqual({ erro: 'delete fail' })
   })
@@ -853,9 +741,7 @@ describe('excluirCliente', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('editarMedium', () => {
   it('edita médium com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ mediuns: { data: null, error: null } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
     const fd = makeFormData({ nome: 'Carlos Souza', especialidade: 'Passes', telefone: '' })
     const resultado = await editarMedium('med-1', null, fd)
     expect(resultado).toBeNull()
@@ -868,9 +754,7 @@ describe('editarMedium', () => {
   })
 
   it('retorna erro de DB', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ mediuns: { data: null, error: { message: 'update fail' } } })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain(new Error('update fail')))
     const fd = makeFormData({ nome: 'Carlos Souza' })
     const resultado = await editarMedium('med-1', null, fd)
     expect(resultado?.erro).toBe('update fail')
@@ -882,23 +766,15 @@ describe('editarMedium', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('excluirMedium', () => {
   it('desvincula agendamentos e exclui médium com sucesso', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        agendamentos: { data: null, error: null }, // update medium_id = null
-        mediuns: { data: null, error: null },       // delete
-      })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain()) // update medium_id = null
+    mockDb.delete.mockReturnValue(mkDeleteChain()) // delete médium
     const resultado = await excluirMedium('med-1')
     expect(resultado).toEqual({})
   })
 
   it('retorna erro se exclusão do médium falhar', async () => {
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({
-        agendamentos: { data: null, error: null },
-        mediuns: { data: null, error: { message: 'delete fail' } },
-      })
-    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
+    mockDb.delete.mockReturnValue(mkDeleteChain(new Error('delete fail')))
     const resultado = await excluirMedium('med-1')
     expect(resultado).toEqual({ erro: 'delete fail' })
   })
@@ -916,21 +792,15 @@ describe('excluirMedium', () => {
 describe('verificarAdmin — whitelist de emails', () => {
   it('bloqueia usuário não listado no ADMIN_EMAILS', async () => {
     process.env.ADMIN_EMAILS = 'super@admin.com'
-    mockAuth.mockResolvedValue(
-      mkSessionClient({ email: 'outro@user.com', id: 'uid-2' })
-    )
+    mockAuth.mockResolvedValue(mkSessionClient({ email: 'outro@user.com', id: 'uid-2' }))
     const resultado = await excluirAgendamento('ag-1')
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
 
   it('permite usuário listado no ADMIN_EMAILS', async () => {
     process.env.ADMIN_EMAILS = 'super@admin.com,admin@test.com'
-    mockAuth.mockResolvedValue(
-      mkSessionClient({ email: 'admin@test.com', id: 'uid-admin' })
-    )
-    mockCreateAdminClient.mockReturnValue(
-      mkDbClient({ agendamentos: { data: null, error: null } })
-    )
+    mockAuth.mockResolvedValue(mkSessionClient({ email: 'admin@test.com', id: 'uid-admin' }))
+    mockDb.delete.mockReturnValue(mkDeleteChain())
     const resultado = await excluirAgendamento('ag-1')
     expect(resultado).toEqual({})
   })

@@ -3,49 +3,48 @@
 // Server Actions para a área pública dos médiuns (acesso via token)
 
 import { revalidatePath } from 'next/cache'
-import { createAdminClient } from '@/lib/supabase/server'
+import { and, eq } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { agendamentos, mediuns } from '@/lib/db/schema'
+import { mensagemErro } from '@/lib/db/errors'
 
 // Médium assume um agendamento disponível
 export async function assumirAgendamento(
   agendamentoId: string,
   mediumToken: string
 ): Promise<{ erro?: string }> {
-  const supabase = createAdminClient()
-
   // Valida o token e obtém o médium
-  const { data: medium, error: errMedium } = await supabase
-    .from('mediuns')
-    .select('id')
-    .eq('token_acesso', mediumToken)
-    .eq('ativo', true)
-    .single()
+  const [medium] = await db
+    .select({ id: mediuns.id })
+    .from(mediuns)
+    .where(and(eq(mediuns.tokenAcesso, mediumToken), eq(mediuns.ativo, true)))
+    .limit(1)
 
-  if (errMedium || !medium) {
+  if (!medium) {
     return { erro: 'Token inválido.' }
   }
 
   // Verifica se o agendamento ainda está disponível (sem médium)
-  const { data: ag, error: errAg } = await supabase
-    .from('agendamentos')
-    .select('id, medium_id')
-    .eq('id', agendamentoId)
-    .single()
+  const [ag] = await db
+    .select({ id: agendamentos.id, mediumId: agendamentos.mediumId })
+    .from(agendamentos)
+    .where(eq(agendamentos.id, agendamentoId))
+    .limit(1)
 
-  if (errAg || !ag) {
+  if (!ag) {
     return { erro: 'Agendamento não encontrado.' }
   }
 
-  if (ag.medium_id) {
+  if (ag.mediumId) {
     return { erro: 'Este agendamento já foi assumido por outro médium.' }
   }
 
   // Atribui o médium
-  const { error } = await supabase
-    .from('agendamentos')
-    .update({ medium_id: medium.id })
-    .eq('id', agendamentoId)
-
-  if (error) return { erro: error.message }
+  try {
+    await db.update(agendamentos).set({ mediumId: medium.id }).where(eq(agendamentos.id, agendamentoId))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath(`/mediuns/${mediumToken}`)
   revalidatePath('/admin/agendamentos') // GAP-05: sincroniza admin quando médium assume
@@ -58,28 +57,26 @@ export async function liberarAgendamento(
   agendamentoId: string,
   mediumToken: string
 ): Promise<{ erro?: string }> {
-  const supabase = createAdminClient()
-
   // Valida o token
-  const { data: medium, error: errMedium } = await supabase
-    .from('mediuns')
-    .select('id')
-    .eq('token_acesso', mediumToken)
-    .eq('ativo', true)
-    .single()
+  const [medium] = await db
+    .select({ id: mediuns.id })
+    .from(mediuns)
+    .where(and(eq(mediuns.tokenAcesso, mediumToken), eq(mediuns.ativo, true)))
+    .limit(1)
 
-  if (errMedium || !medium) {
+  if (!medium) {
     return { erro: 'Token inválido.' }
   }
 
   // Garante que o agendamento pertence a este médium
-  const { error } = await supabase
-    .from('agendamentos')
-    .update({ medium_id: null })
-    .eq('id', agendamentoId)
-    .eq('medium_id', medium.id)
-
-  if (error) return { erro: error.message }
+  try {
+    await db
+      .update(agendamentos)
+      .set({ mediumId: null })
+      .where(and(eq(agendamentos.id, agendamentoId), eq(agendamentos.mediumId, medium.id)))
+  } catch (erro) {
+    return { erro: mensagemErro(erro) }
+  }
 
   revalidatePath(`/mediuns/${mediumToken}`)
   revalidatePath('/admin/agendamentos') // GAP-05: sincroniza admin quando médium libera

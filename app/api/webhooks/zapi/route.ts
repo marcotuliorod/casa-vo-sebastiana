@@ -2,7 +2,9 @@
 // Configura em: Painel Z-API → Webhook de Status de Mensagem
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { eq } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { logsWhatsapp } from '@/lib/db/schema'
 
 interface ZApiStatusPayload {
   instanceId?: string
@@ -11,8 +13,8 @@ interface ZApiStatusPayload {
   status?: string // 'PENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED'
 }
 
-const mapearStatus = (status: string): string => {
-  const mapa: Record<string, string> = {
+const mapearStatus = (status: string): 'na_fila' | 'enviado' | 'entregue' | 'falhou' => {
+  const mapa: Record<string, 'na_fila' | 'enviado' | 'entregue' | 'falhou'> = {
     PENDING: 'na_fila',
     SENT: 'enviado',
     DELIVERED: 'entregue',
@@ -48,13 +50,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true }) // ignorar payloads sem ID
   }
 
-  const supabase = createAdminClient()
   const novoStatus = mapearStatus(payload.status)
 
-  await supabase
-    .from('logs_whatsapp')
-    .update({ status: novoStatus, atualizado_em: new Date().toISOString() })
-    .eq('id_mensagem_provedor', idMensagem)
+  await db
+    .update(logsWhatsapp)
+    .set({ status: novoStatus, atualizadoEm: new Date() })
+    .where(eq(logsWhatsapp.idMensagemProvedor, idMensagem))
 
   return NextResponse.json({ ok: true })
 }

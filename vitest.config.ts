@@ -13,7 +13,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html'],
       include: ['lib/**/*.ts', 'components/**/*.tsx'],
-      exclude: ['lib/supabase/**', 'node_modules/**'],
+      exclude: ['lib/db/index.ts', 'node_modules/**'],
     },
   },
   resolve: {
