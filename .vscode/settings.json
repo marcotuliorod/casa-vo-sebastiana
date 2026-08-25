@@ -1,0 +1,13 @@
+{
+  "sqltools.connections": [
+    {
+      "name": "Casa Vó Sebastiana (local)",
+      "driver": "PostgreSQL",
+      "server": "localhost",
+      "port": 5432,
+      "database": "casa_vo_sebastiana",
+      "username": "app",
+      "askForPassword": true
+    }
+  ]
+}
