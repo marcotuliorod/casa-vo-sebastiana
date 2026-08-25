@@ -2,7 +2,9 @@
 
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import { createAdminClient } from '@/lib/supabase/server'
+import { eq } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { recados } from '@/lib/db/schema'
 import { verificarAdmin } from '@/lib/auth/admin'
 
 const schemaRecado = z.object({
@@ -38,10 +40,11 @@ export async function criarRecado(
     return { erro: first.message, campo: String(first.path[0] ?? '') }
   }
 
-  const supabase = createAdminClient()
-  const { error } = await supabase.from('recados').insert(parsed.data)
-
-  if (error) return { erro: 'Erro ao criar recado. Tente novamente.' }
+  try {
+    await db.insert(recados).values(parsed.data)
+  } catch {
+    return { erro: 'Erro ao criar recado. Tente novamente.' }
+  }
 
   revalidar()
   return null
@@ -67,13 +70,14 @@ export async function editarRecado(
     return { erro: first.message, campo: String(first.path[0] ?? '') }
   }
 
-  const supabase = createAdminClient()
-  const { error } = await supabase
-    .from('recados')
-    .update({ ...parsed.data, atualizado_em: new Date().toISOString() })
-    .eq('id', id)
-
-  if (error) return { erro: 'Erro ao editar recado.' }
+  try {
+    await db
+      .update(recados)
+      .set({ ...parsed.data, atualizadoEm: new Date() })
+      .where(eq(recados.id, id))
+  } catch {
+    return { erro: 'Erro ao editar recado.' }
+  }
 
   revalidar()
   return null
@@ -83,13 +87,11 @@ export async function excluirRecado(id: string): Promise<{ erro?: string }> {
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const supabase = createAdminClient()
-  const { error } = await supabase
-    .from('recados')
-    .update({ ativo: false, atualizado_em: new Date().toISOString() })
-    .eq('id', id)
-
-  if (error) return { erro: 'Erro ao excluir recado.' }
+  try {
+    await db.update(recados).set({ ativo: false, atualizadoEm: new Date() }).where(eq(recados.id, id))
+  } catch {
+    return { erro: 'Erro ao excluir recado.' }
+  }
 
   revalidar()
   return {}
@@ -102,13 +104,11 @@ export async function toggleFixadoRecado(
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const supabase = createAdminClient()
-  const { error } = await supabase
-    .from('recados')
-    .update({ fixado, atualizado_em: new Date().toISOString() })
-    .eq('id', id)
-
-  if (error) return { erro: 'Erro ao atualizar recado.' }
+  try {
+    await db.update(recados).set({ fixado, atualizadoEm: new Date() }).where(eq(recados.id, id))
+  } catch {
+    return { erro: 'Erro ao atualizar recado.' }
+  }
 
   revalidar()
   return {}

@@ -1,8 +1,11 @@
 // Cron job: envia lembretes de 24h para agendamentos confirmados de amanhã
-// Configurado no vercel.json para rodar às 12:00 UTC (09:00 BRT)
+// Disparado pelo container `cron` do Docker Compose (ver docker/cron/)
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { and, eq, gte, isNotNull, lt, lte } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { agendamentos, logsWhatsapp, whatsappQueue } from '@/lib/db/schema'
+import { getAgendamentosParaLembrete } from '@/lib/queries/appointments'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
 import { mensagemLembrete24h, mensagemLembreteEvento } from '@/lib/whatsapp/templates'
 import { amanha } from '@/lib/utils/date'
@@ -28,24 +31,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ erro: 'Não autorizado' }, { status: 401 })
   }
 
-  const supabase = createAdminClient()
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
   const dataAmanha = amanha()
 
   // Buscar agendamentos confirmados de amanhã sem lembrete enviado
-  const { data: agendamentos, error } = await supabase
-    .from('agendamentos')
-    .select('*, clientes(*)')
-    .eq('data_agendada', dataAmanha)
-    .eq('status', 'confirmado')
-    .eq('lembrete_enviado', false)
-
-  if (error) {
-    console.error('[Cron lembretes] Erro na query:', error.message)
-    return NextResponse.json({ erro: error.message }, { status: 500 })
+  let agendamentosLembrete
+  try {
+    agendamentosLembrete = await getAgendamentosParaLembrete(dataAmanha)
+  } catch (erro) {
+    console.error('[Cron lembretes] Erro na query:', erro)
+    return NextResponse.json({ erro: erro instanceof Error ? erro.message : 'Erro desconhecido' }, { status: 500 })
   }
 
-  if (!agendamentos?.length) {
+  if (!agendamentosLembrete.length) {
     return NextResponse.json({
       processados: 0,
       falhas: 0,
@@ -64,7 +62,7 @@ export async function GET(request: NextRequest) {
     console.error('[Cron lembretes] WhatsApp não disponível — pulando envio de lembretes:', err)
   }
 
-  if (provedor) for (const ag of agendamentos) {
+  if (provedor) for (const ag of agendamentosLembrete) {
     const mensagem = mensagemLembrete24h({
       nomeCliente: ag.clientes.nome,
       dataAgendada: ag.data_agendada,
@@ -79,23 +77,20 @@ export async function GET(request: NextRequest) {
     })
 
     // Registrar log
-    await supabase.from('logs_whatsapp').insert({
-      agendamento_id: ag.id,
+    await db.insert(logsWhatsapp).values({
+      agendamentoId: ag.id,
       evento: 'lembrete_24h',
       provedor: provedor.nome,
-      para_telefone: ag.clientes.telefone,
+      paraTelefone: ag.clientes.telefone,
       mensagem,
-      id_mensagem_provedor: resultado.idMensagemProvedor ?? null,
+      idMensagemProvedor: resultado.idMensagemProvedor ?? null,
       status: resultado.sucesso ? 'enviado' : 'falhou',
-      mensagem_erro: resultado.erro ?? null,
+      mensagemErro: resultado.erro ?? null,
     })
 
     if (resultado.sucesso) {
       // Marcar lembrete como enviado (idempotência)
-      await supabase
-        .from('agendamentos')
-        .update({ lembrete_enviado: true })
-        .eq('id', ag.id)
+      await db.update(agendamentos).set({ lembreteEnviado: true }).where(eq(agendamentos.id, ag.id))
 
       processados++
     } else {
@@ -113,58 +108,60 @@ export async function GET(request: NextRequest) {
   let eventosFalhas = 0
 
   // Busca agendamentos de eventos confirmados sem lembrete, ordenando por data/hora
-  const { data: agEventos } = await supabase
-    .from('agendamentos')
-    .select('*, clientes(*), eventos(titulo, hora_inicio, lembrete_horas)')
-    .not('evento_id', 'is', null)
-    .eq('status', 'confirmado')
-    .eq('lembrete_enviado', false)
-    .gte('data_agendada', formatInTimeZone(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd'))
+  const agEventos = await db.query.agendamentos.findMany({
+    where: and(
+      isNotNull(agendamentos.eventoId),
+      eq(agendamentos.status, 'confirmado'),
+      eq(agendamentos.lembreteEnviado, false),
+      gte(agendamentos.dataAgendada, formatInTimeZone(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd'))
+    ),
+    with: {
+      cliente: true,
+      evento: { columns: { titulo: true, horaInicio: true, lembreteHoras: true } },
+    },
+  })
 
-  if (agEventos?.length && provedor) {
+  if (agEventos.length && provedor) {
     const agora = new Date()
 
     for (const ag of agEventos) {
-      const evento = ag.eventos as { titulo: string; hora_inicio: string; lembrete_horas: number } | null
+      const evento = ag.evento
       if (!evento) continue
 
       // Calcula quando deve enviar: data_agendada + hora_inicio - lembrete_horas
-      const dataHoraEvento = parseISO(`${ag.data_agendada}T${ag.hora_inicio}`)
-      const momentoLembrete = addHours(dataHoraEvento, -evento.lembrete_horas)
+      const dataHoraEvento = parseISO(`${ag.dataAgendada}T${ag.horaInicio}`)
+      const momentoLembrete = addHours(dataHoraEvento, -evento.lembreteHoras)
 
       // Só envia se já passou do momento do lembrete (e ainda não passou o evento)
       if (agora < momentoLembrete || agora > dataHoraEvento) continue
 
       const mensagem = mensagemLembreteEvento({
-        nomeCliente: ag.clientes.nome,
+        nomeCliente: ag.cliente.nome,
         tituloEvento: evento.titulo,
-        dataEvento: ag.data_agendada,
-        horaInicio: ag.hora_inicio.slice(0, 5),
-        tokenPublico: ag.token_publico,
+        dataEvento: ag.dataAgendada,
+        horaInicio: ag.horaInicio.slice(0, 5),
+        tokenPublico: ag.tokenPublico,
         baseUrl,
       })
 
       const resultado = await provedor.enviarMensagem({
-        para: ag.clientes.telefone,
+        para: ag.cliente.telefone,
         corpo: mensagem,
       })
 
-      await supabase.from('logs_whatsapp').insert({
-        agendamento_id: ag.id,
+      await db.insert(logsWhatsapp).values({
+        agendamentoId: ag.id,
         evento: 'lembrete_24h',
         provedor: provedor.nome,
-        para_telefone: ag.clientes.telefone,
+        paraTelefone: ag.cliente.telefone,
         mensagem,
-        id_mensagem_provedor: resultado.idMensagemProvedor ?? null,
+        idMensagemProvedor: resultado.idMensagemProvedor ?? null,
         status: resultado.sucesso ? 'enviado' : 'falhou',
-        mensagem_erro: resultado.erro ?? null,
+        mensagemErro: resultado.erro ?? null,
       })
 
       if (resultado.sucesso) {
-        await supabase
-          .from('agendamentos')
-          .update({ lembrete_enviado: true })
-          .eq('id', ag.id)
+        await db.update(agendamentos).set({ lembreteEnviado: true }).where(eq(agendamentos.id, ag.id))
         eventosProcessados++
       } else {
         eventosFalhas++
@@ -176,15 +173,19 @@ export async function GET(request: NextRequest) {
   let retryProcessados = 0
   let retryFalhas = 0
 
-  const agora = new Date().toISOString()
-  const { data: fila } = await supabase
-    .from('whatsapp_queue')
-    .select('*')
-    .eq('status', 'pendente')
-    .lte('proximo_retry', agora)
-    .lt('tentativas', 3)
+  const agora = new Date()
+  const fila = await db
+    .select()
+    .from(whatsappQueue)
+    .where(
+      and(
+        eq(whatsappQueue.status, 'pendente'),
+        lte(whatsappQueue.proximoRetry, agora),
+        lt(whatsappQueue.tentativas, 3)
+      )
+    )
 
-  if (fila?.length) {
+  if (fila.length) {
     let provedorRetry: ReturnType<typeof getProvedorWhatsApp> | null = null
     try {
       provedorRetry = getProvedorWhatsApp()
@@ -201,22 +202,18 @@ export async function GET(request: NextRequest) {
       const novasTentativas = item.tentativas + 1
       const novoStatus = resultado.sucesso
         ? 'enviado'
-        : novasTentativas >= item.max_tentativas
+        : novasTentativas >= item.maxTentativas
           ? 'falhou'
           : 'pendente'
 
       // Próximo retry: backoff exponencial (15min, 1h, 4h)
       const minutosBackoff = [15, 60, 240][novasTentativas - 1] ?? 240
-      const proximoRetry = new Date(Date.now() + minutosBackoff * 60 * 1000).toISOString()
+      const proximoRetry = new Date(Date.now() + minutosBackoff * 60 * 1000)
 
-      await supabase
-        .from('whatsapp_queue')
-        .update({
-          tentativas: novasTentativas,
-          status: novoStatus,
-          proximo_retry: proximoRetry,
-        })
-        .eq('id', item.id)
+      await db
+        .update(whatsappQueue)
+        .set({ tentativas: novasTentativas, status: novoStatus, proximoRetry })
+        .where(eq(whatsappQueue.id, item.id))
 
       if (resultado.sucesso) retryProcessados++
       else retryFalhas++
@@ -224,8 +221,8 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    horario: { processados, falhas, total: agendamentos.length, data_alvo: dataAmanha },
-    eventos: { processados: eventosProcessados, falhas: eventosFalhas, total: agEventos?.length ?? 0 },
-    retry: { processados: retryProcessados, falhas: retryFalhas, total: fila?.length ?? 0 },
+    horario: { processados, falhas, total: agendamentosLembrete.length, data_alvo: dataAmanha },
+    eventos: { processados: eventosProcessados, falhas: eventosFalhas, total: agEventos.length },
+    retry: { processados: retryProcessados, falhas: retryFalhas, total: fila.length },
   })
 }

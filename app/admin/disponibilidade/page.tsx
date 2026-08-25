@@ -1,6 +1,8 @@
 // Gerenciamento da grade de horários
+import { asc, gte } from 'drizzle-orm'
 import { formatInTimeZone } from 'date-fns-tz'
-import { createAdminClient } from '@/lib/supabase/server'
+import { db } from '@/lib/db'
+import { gradeHorarios, datasBloqueadas } from '@/lib/db/schema'
 import { GradeHorariosEditor } from './GradeHorariosEditor'
 import { BloqueiosLista } from './BloqueiosLista'
 import type { GradeHorario, DataBloqueada } from '@/types/database'
@@ -10,23 +12,31 @@ export const metadata = {
 }
 
 export default async function DisponibilidadePage() {
-  const supabase = createAdminClient()
-
-  const [gradeResult, bloqueiosResult] = await Promise.all([
-    supabase
-      .from('grade_horarios')
-      .select('*')
-      .order('dia_semana')
-      .order('hora_inicio'),
-    supabase
-      .from('datas_bloqueadas')
-      .select('*')
-      .gte('data_bloqueada', formatInTimeZone(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd'))
-      .order('data_bloqueada'),
+  const [linhasGrade, linhasBloqueios] = await Promise.all([
+    db.select().from(gradeHorarios).orderBy(asc(gradeHorarios.diaSemana), asc(gradeHorarios.horaInicio)),
+    db
+      .select()
+      .from(datasBloqueadas)
+      .where(gte(datasBloqueadas.dataBloqueada, formatInTimeZone(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd')))
+      .orderBy(asc(datasBloqueadas.dataBloqueada)),
   ])
 
-  const grade = (gradeResult.data ?? []) as GradeHorario[]
-  const bloqueios = (bloqueiosResult.data ?? []) as DataBloqueada[]
+  const grade: GradeHorario[] = linhasGrade.map((g) => ({
+    id: g.id,
+    dia_semana: g.diaSemana,
+    hora_inicio: g.horaInicio,
+    hora_fim: g.horaFim,
+    ativo: g.ativo,
+  }))
+
+  const bloqueios: DataBloqueada[] = linhasBloqueios.map((b) => ({
+    id: b.id,
+    data_bloqueada: b.dataBloqueada,
+    hora_inicio: b.horaInicio,
+    hora_fim: b.horaFim,
+    motivo: b.motivo,
+    criado_em: b.criadoEm.toISOString(),
+  }))
 
   return (
     <div className="space-y-8">

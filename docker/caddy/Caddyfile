@@ -1,3 +1,8 @@
 {$DOMAIN:localhost} {
-	reverse_proxy app:3000
+	# Preserva o Host original do request externo — sem isso o Next.js/Auth.js
+	# constrói URLs (ex: redirect de erro do magic link) com o endereço interno
+	# do container em vez do domínio público.
+	reverse_proxy app:3000 {
+		header_up Host {http.request.host}
+	}
 }

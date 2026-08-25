@@ -4,7 +4,10 @@
 
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
-import { createAdminClient } from '@/lib/supabase/server'
+import { and, count, eq, gte, lt, ne } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { agendamentos, clientes, logsWhatsapp, whatsappQueue } from '@/lib/db/schema'
+import { mensagemErro, codigoPg } from '@/lib/db/errors'
 import { getSlotsDisponiveis } from '@/lib/queries/availability'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
 import { mensagemConfirmacao, mensagemCancelamento, mensagemNovoAgendamentoAdmin, mensagemCancelamentoAdmin, mensagemConfirmacaoEvento } from '@/lib/whatsapp/templates'
@@ -44,8 +47,6 @@ export async function criarAgendamento(
   const telefoneNormalizado = normalizarTelefone(telefone)
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
 
-  const supabase = createAdminClient()
-
   // 0a. US-19: verificar limite de agendamentos por cliente por mês
   const limiteStr = process.env.MAX_AGENDAMENTOS_MES
   if (limiteStr) {
@@ -57,22 +58,26 @@ export async function criarAgendamento(
         ? `${anoNum + 1}-01-01`
         : `${anoNum}-${String(mesNum + 1).padStart(2, '0')}-01`
 
-      const { data: clienteExistente } = await supabase
-        .from('clientes')
-        .select('id')
-        .eq('telefone', telefoneNormalizado)
-        .single()
+      const [clienteExistente] = await db
+        .select({ id: clientes.id })
+        .from(clientes)
+        .where(eq(clientes.telefone, telefoneNormalizado))
+        .limit(1)
 
       if (clienteExistente) {
-        const { count } = await supabase
-          .from('agendamentos')
-          .select('*', { count: 'exact', head: true })
-          .eq('cliente_id', clienteExistente.id)
-          .gte('data_agendada', inicioMes)
-          .lt('data_agendada', inicioProxMes)
-          .not('status', 'eq', 'cancelado')
+        const [{ value: totalNoMes }] = await db
+          .select({ value: count() })
+          .from(agendamentos)
+          .where(
+            and(
+              eq(agendamentos.clienteId, clienteExistente.id),
+              gte(agendamentos.dataAgendada, inicioMes),
+              lt(agendamentos.dataAgendada, inicioProxMes),
+              ne(agendamentos.status, 'cancelado')
+            )
+          )
 
-        if (count !== null && count >= limite) {
+        if (totalNoMes >= limite) {
           return {
             erro: `Você já tem ${limite} agendamento${limite !== 1 ? 's' : ''} neste mês. Entre em contato com a casa para mais informações.`,
           }
@@ -91,40 +96,37 @@ export async function criarAgendamento(
   }
 
   // 1. Upsert do cliente (por telefone)
-  const { data: cliente, error: erroCliente } = await supabase
-    .from('clientes')
-    .upsert(
-      {
-        nome,
-        telefone: telefoneNormalizado,
-        email: email || null,
-      },
-      { onConflict: 'telefone', ignoreDuplicates: false }
-    )
-    .select()
-    .single()
-
-  if (erroCliente || !cliente) {
+  let cliente
+  try {
+    ;[cliente] = await db
+      .insert(clientes)
+      .values({ nome, telefone: telefoneNormalizado, email: email || null })
+      .onConflictDoUpdate({
+        target: clientes.telefone,
+        set: { nome, email: email || null },
+      })
+      .returning()
+  } catch {
     return { erro: 'Erro ao salvar seus dados. Tente novamente.' }
   }
 
   // 2. Criar agendamento
-  const { data: agendamento, error: erroAgendamento } = await supabase
-    .from('agendamentos')
-    .insert({
-      cliente_id: cliente.id,
-      data_agendada: data,
-      hora_inicio,
-      hora_fim,
-      status: 'pendente',
-      notas: notas || null,
-    })
-    .select()
-    .single()
-
-  if (erroAgendamento) {
+  let agendamento
+  try {
+    ;[agendamento] = await db
+      .insert(agendamentos)
+      .values({
+        clienteId: cliente.id,
+        dataAgendada: data,
+        horaInicio: hora_inicio,
+        horaFim: hora_fim,
+        status: 'pendente',
+        notas: notas || null,
+      })
+      .returning()
+  } catch (erro) {
     // Constraint de sobreposição ativada
-    if (erroAgendamento.code === '23P01') {
+    if (codigoPg(erro) === '23P01') {
       return { erro: 'Este horário já foi preenchido. Por favor, escolha outro.' }
     }
     return { erro: 'Erro ao criar agendamento. Tente novamente.' }
@@ -135,32 +137,32 @@ export async function criarAgendamento(
     nomeCliente: nome,
     dataAgendada: data,
     horaInicio: hora_inicio,
-    tokenPublico: agendamento.token_publico,
+    tokenPublico: agendamento.tokenPublico,
     baseUrl,
   })
 
   try {
     const provedor = getProvedorWhatsApp()
-    const resultado = await provedor.enviarMensagem({
+    const resultadoEnvio = await provedor.enviarMensagem({
       para: telefoneNormalizado,
       corpo: mensagemWpp,
     })
 
-    await supabase.from('logs_whatsapp').insert({
-      agendamento_id: agendamento.id,
+    await db.insert(logsWhatsapp).values({
+      agendamentoId: agendamento.id,
       evento: 'confirmacao_agendamento',
       provedor: provedor.nome,
-      para_telefone: telefoneNormalizado,
+      paraTelefone: telefoneNormalizado,
       mensagem: mensagemWpp,
-      id_mensagem_provedor: resultado.idMensagemProvedor ?? null,
-      status: resultado.sucesso ? 'enviado' : 'falhou',
-      mensagem_erro: resultado.erro ?? null,
+      idMensagemProvedor: resultadoEnvio.idMensagemProvedor ?? null,
+      status: resultadoEnvio.sucesso ? 'enviado' : 'falhou',
+      mensagemErro: resultadoEnvio.erro ?? null,
     })
 
     // US-16: enfileirar retry se falhou
-    if (!resultado.sucesso) {
-      await supabase.from('whatsapp_queue').insert({
-        agendamento_id: agendamento.id,
+    if (!resultadoEnvio.sucesso) {
+      await db.insert(whatsappQueue).values({
+        agendamentoId: agendamento.id,
         telefone: telefoneNormalizado,
         mensagem: mensagemWpp,
         tipo: 'confirmacao',
@@ -170,14 +172,16 @@ export async function criarAgendamento(
     // Falha no WhatsApp (ex: credenciais ausentes) não cancela o agendamento
     console.error('[WhatsApp] Falha ao enviar confirmação:', err)
     // US-16: enfileirar para retry quando credenciais estiverem configuradas
-    await supabase.from('whatsapp_queue').insert({
-      agendamento_id: agendamento.id,
-      telefone: telefoneNormalizado,
-      mensagem: mensagemWpp,
-      tipo: 'confirmacao',
-    }).then(({ error }) => {
-      if (error) console.error('[WhatsApp] Falha ao enfileirar retry:', error)
-    })
+    try {
+      await db.insert(whatsappQueue).values({
+        agendamentoId: agendamento.id,
+        telefone: telefoneNormalizado,
+        mensagem: mensagemWpp,
+        tipo: 'confirmacao',
+      })
+    } catch (erroFila) {
+      console.error('[WhatsApp] Falha ao enfileirar retry:', mensagemErro(erroFila))
+    }
   }
 
   // 4. Notificar admin sobre novo agendamento (US-17)
@@ -199,7 +203,7 @@ export async function criarAgendamento(
   }
 
   // 5. Redirecionar para a página de confirmação
-  redirect(`/agendamento/${agendamento.token_publico}`)
+  redirect(`/agendamento/${agendamento.tokenPublico}`)
 }
 
 // ─── Inscrição em Evento ──────────────────────────────────────
@@ -229,8 +233,6 @@ export async function inscreverEmEvento(
   const telefoneNormalizado = normalizarTelefone(telefone)
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
 
-  const supabase = createAdminClient()
-
   // 1. Verificar evento ativo
   const evento = await getEvento(evento_id)
   if (!evento || !evento.ativo) {
@@ -255,35 +257,36 @@ export async function inscreverEmEvento(
   }
 
   // 4. Upsert do cliente (por telefone)
-  const { data: cliente, error: erroCliente } = await supabase
-    .from('clientes')
-    .upsert(
-      { nome, telefone: telefoneNormalizado, email: email || null },
-      { onConflict: 'telefone', ignoreDuplicates: false }
-    )
-    .select()
-    .single()
-
-  if (erroCliente || !cliente) {
+  let cliente
+  try {
+    ;[cliente] = await db
+      .insert(clientes)
+      .values({ nome, telefone: telefoneNormalizado, email: email || null })
+      .onConflictDoUpdate({
+        target: clientes.telefone,
+        set: { nome, email: email || null },
+      })
+      .returning()
+  } catch {
     return { erro: 'Erro ao salvar seus dados. Tente novamente.' }
   }
 
   // 5. Criar agendamento vinculado ao evento
-  const { data: agendamento, error: erroAg } = await supabase
-    .from('agendamentos')
-    .insert({
-      cliente_id: cliente.id,
-      evento_id,
-      data_agendada: data,
-      hora_inicio: evento.hora_inicio,
-      hora_fim: evento.hora_fim,
-      status: 'pendente',
-      notas: notas || null,
-    })
-    .select()
-    .single()
-
-  if (erroAg) {
+  let agendamento
+  try {
+    ;[agendamento] = await db
+      .insert(agendamentos)
+      .values({
+        clienteId: cliente.id,
+        eventoId: evento_id,
+        dataAgendada: data,
+        horaInicio: evento.hora_inicio,
+        horaFim: evento.hora_fim,
+        status: 'pendente',
+        notas: notas || null,
+      })
+      .returning()
+  } catch {
     return { erro: 'Erro ao registrar inscrição. Tente novamente.' }
   }
 
@@ -294,7 +297,7 @@ export async function inscreverEmEvento(
     dataEvento: data,
     horaInicio: evento.hora_inicio.slice(0, 5),
     horaFim: evento.hora_fim.slice(0, 5),
-    tokenPublico: agendamento.token_publico,
+    tokenPublico: agendamento.tokenPublico,
     baseUrl,
   })
 
@@ -305,20 +308,20 @@ export async function inscreverEmEvento(
       corpo: mensagemWpp,
     })
 
-    await supabase.from('logs_whatsapp').insert({
-      agendamento_id: agendamento.id,
+    await db.insert(logsWhatsapp).values({
+      agendamentoId: agendamento.id,
       evento: 'confirmacao_agendamento',
       provedor: provedor.nome,
-      para_telefone: telefoneNormalizado,
+      paraTelefone: telefoneNormalizado,
       mensagem: mensagemWpp,
-      id_mensagem_provedor: resultadoWpp.idMensagemProvedor ?? null,
+      idMensagemProvedor: resultadoWpp.idMensagemProvedor ?? null,
       status: resultadoWpp.sucesso ? 'enviado' : 'falhou',
-      mensagem_erro: resultadoWpp.erro ?? null,
+      mensagemErro: resultadoWpp.erro ?? null,
     })
 
     if (!resultadoWpp.sucesso) {
-      await supabase.from('whatsapp_queue').insert({
-        agendamento_id: agendamento.id,
+      await db.insert(whatsappQueue).values({
+        agendamentoId: agendamento.id,
         telefone: telefoneNormalizado,
         mensagem: mensagemWpp,
         tipo: 'confirmacao',
@@ -326,14 +329,16 @@ export async function inscreverEmEvento(
     }
   } catch (err) {
     console.error('[WhatsApp] Falha ao enviar confirmação de evento:', err)
-    await supabase.from('whatsapp_queue').insert({
-      agendamento_id: agendamento.id,
-      telefone: telefoneNormalizado,
-      mensagem: mensagemWpp,
-      tipo: 'confirmacao',
-    }).then(({ error }) => {
-      if (error) console.error('[WhatsApp] Falha ao enfileirar retry:', error)
-    })
+    try {
+      await db.insert(whatsappQueue).values({
+        agendamentoId: agendamento.id,
+        telefone: telefoneNormalizado,
+        mensagem: mensagemWpp,
+        tipo: 'confirmacao',
+      })
+    } catch (erroFila) {
+      console.error('[WhatsApp] Falha ao enfileirar retry:', mensagemErro(erroFila))
+    }
   }
 
   // 7. Notificar admin
@@ -356,22 +361,20 @@ export async function inscreverEmEvento(
     }
   }
 
-  redirect(`/agendamento/${agendamento.token_publico}`)
+  redirect(`/agendamento/${agendamento.tokenPublico}`)
 }
 
 // ─── Cancelar agendamento pelo token público ──────────────────
 export async function cancelarAgendamento(token: string): Promise<{ erro?: string }> {
-  const supabase = createAdminClient()
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
 
   // Buscar o agendamento
-  const { data: agendamento, error: erroQuery } = await supabase
-    .from('agendamentos')
-    .select('*, clientes(*)')
-    .eq('token_publico', token)
-    .single()
+  const agendamento = await db.query.agendamentos.findFirst({
+    where: eq(agendamentos.tokenPublico, token),
+    with: { cliente: true },
+  })
 
-  if (erroQuery || !agendamento) {
+  if (!agendamento) {
     return { erro: 'Agendamento não encontrado.' }
   }
 
@@ -384,12 +387,9 @@ export async function cancelarAgendamento(token: string): Promise<{ erro?: strin
   }
 
   // Atualizar status
-  const { error: erroCancelamento } = await supabase
-    .from('agendamentos')
-    .update({ status: 'cancelado' })
-    .eq('id', agendamento.id)
-
-  if (erroCancelamento) {
+  try {
+    await db.update(agendamentos).set({ status: 'cancelado' }).where(eq(agendamentos.id, agendamento.id))
+  } catch {
     return { erro: 'Erro ao cancelar. Tente novamente.' }
   }
 
@@ -397,27 +397,27 @@ export async function cancelarAgendamento(token: string): Promise<{ erro?: strin
   try {
     const provedor = getProvedorWhatsApp()
     const mensagem = mensagemCancelamento({
-      nomeCliente: agendamento.clientes.nome,
-      dataAgendada: agendamento.data_agendada,
-      horaInicio: agendamento.hora_inicio,
+      nomeCliente: agendamento.cliente.nome,
+      dataAgendada: agendamento.dataAgendada,
+      horaInicio: agendamento.horaInicio,
       tokenPublico: token,
       baseUrl,
     })
 
     const resultado = await provedor.enviarMensagem({
-      para: agendamento.clientes.telefone,
+      para: agendamento.cliente.telefone,
       corpo: mensagem,
     })
 
-    await supabase.from('logs_whatsapp').insert({
-      agendamento_id: agendamento.id,
+    await db.insert(logsWhatsapp).values({
+      agendamentoId: agendamento.id,
       evento: 'cancelamento',
       provedor: provedor.nome,
-      para_telefone: agendamento.clientes.telefone,
+      paraTelefone: agendamento.cliente.telefone,
       mensagem,
-      id_mensagem_provedor: resultado.idMensagemProvedor ?? null,
+      idMensagemProvedor: resultado.idMensagemProvedor ?? null,
       status: resultado.sucesso ? 'enviado' : 'falhou',
-      mensagem_erro: resultado.erro ?? null,
+      mensagemErro: resultado.erro ?? null,
     })
   } catch (err) {
     console.error('[WhatsApp] Erro ao enviar mensagem de cancelamento:', err)
@@ -429,11 +429,11 @@ export async function cancelarAgendamento(token: string): Promise<{ erro?: strin
     try {
       const provedor = getProvedorWhatsApp()
       const msgAdmin = mensagemCancelamentoAdmin({
-        nomeCliente: agendamento.clientes.nome,
-        telefoneCliente: agendamento.clientes.telefone,
-        dataAgendada: agendamento.data_agendada,
-        horaInicio: agendamento.hora_inicio,
-        horaFim: agendamento.hora_fim,
+        nomeCliente: agendamento.cliente.nome,
+        telefoneCliente: agendamento.cliente.telefone,
+        dataAgendada: agendamento.dataAgendada,
+        horaInicio: agendamento.horaInicio,
+        horaFim: agendamento.horaFim,
       })
       await provedor.enviarMensagem({ para: adminWhatsApp, corpo: msgAdmin })
     } catch (err) {
