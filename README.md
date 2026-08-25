@@ -18,7 +18,7 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 | Calendário | react-day-picker |
 | Ícones | Lucide React |
 
-> Projeto migrado do Supabase (banco gerenciado + Auth) para esta stack self-hosted. Ver `supabase/migrations/*.sql` para o histórico do schema original — a fonte de verdade atual é `lib/db/schema.ts` + `drizzle/`.
+> Projeto migrado do Supabase (banco gerenciado + Auth) para esta stack self-hosted, partindo de uma base nova (sem importação de dados). A fonte de verdade do schema é `lib/db/schema.ts` + `drizzle/`.
 
 ---
 
@@ -379,10 +379,6 @@ casa-vo-sebastiana/
 │   ├── caddy/Caddyfile               # Reverse proxy + TLS automático
 │   ├── cron/                         # Container que dispara /api/cron/lembretes
 │   └── backup/backup.sh              # pg_dump diário com retenção
-│
-├── supabase/                          # Histórico — migrations originais do Supabase (pré-migração)
-│   ├── migrations/*.sql
-│   └── seed.sql
 │
 ├── __tests__/                         # Vitest: actions, queries, utils, templates, componentes
 │   └── db/                            # Testes de integração contra Postgres real (precisam de DATABASE_URL)
