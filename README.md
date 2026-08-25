@@ -222,11 +222,19 @@ Acesse: http://localhost:3000
 |--------|---------------|----------------------|
 | `grade_horarios` | SELECT | ALL |
 | `datas_bloqueadas` | SELECT | ALL |
+| `eventos` | SELECT (somente `ativo = true`) | ALL |
+| `recados` | SELECT (somente `ativo = true`) | — (escrita via `service_role`) |
 | `clientes` | — | ALL |
 | `agendamentos` | — | ALL |
 | `logs_whatsapp` | — | ALL |
+| `mediuns` | — | ALL |
+| `whatsapp_queue` | — | — (acesso só via `service_role`) |
 
 > Server Actions usam `service_role` (bypass RLS) para operações públicas como criar agendamento sem login.
+> A allowlist `ADMIN_EMAILS` é aplicada na camada de aplicação (middleware + Server Actions via
+> `lib/auth/admin.ts`), não nas policies acima — qualquer usuário `authenticated` passa nas
+> policies de RLS. Não exponha o cliente `anon`+sessão para consultar essas tabelas diretamente
+> fora do fluxo já protegido do app.
 
 ---
 
@@ -240,17 +248,24 @@ Acesse: http://localhost:3000
 | `/agendar` | Server Component | Passo 1 — calendário |
 | `/agendar/[data]` | Server Component | Passo 2 — slots disponíveis |
 | `/agendar/confirmar` | Server Component | Passo 3 — formulário |
+| `/agendar/eventos` | Server Component | Lista de eventos com inscrição aberta |
+| `/agendar/eventos/[id]` | Server Component | Inscrição em um evento |
 | `/agendamento/[token]` | Server Component | Detalhe público (sem login) |
 | `/agendamento/[token]/cancelar` | Client Component | Confirmação de cancelamento |
+| `/historico` | Server Component | Busca de histórico do consulente por telefone |
+| `/mediuns/[token]` | Server Component | Área do médium (assumir/liberar agendamentos, mural de recados) |
 | `/auth/login` | Client Component | Login admin (magic link) |
 | `/auth/callback` | API Route | Callback OAuth Supabase |
 | `/admin` | Server Component | Dashboard (protegido) |
 | `/admin/agendamentos` | Server Component | Lista com filtros |
 | `/admin/disponibilidade` | Server Component | Grade e bloqueios |
 | `/admin/consulentes` | Server Component | Lista de clientes |
-| `/api/cron/lembretes` | API Route | Cron job lembretes 24h |
-| `/api/webhooks/twilio` | API Route | Webhook status Twilio |
-| `/api/webhooks/zapi` | API Route | Webhook status Z-API |
+| `/admin/mediuns` | Server Component | Cadastro de médiuns |
+| `/admin/eventos` | Server Component | Cadastro/edição de eventos recorrentes |
+| `/admin/recados` | Server Component | Mural de recados para médiuns |
+| `/api/cron/lembretes` | API Route | Cron job diário: lembretes (horário + evento) e retry da fila de WhatsApp |
+| `/api/webhooks/twilio` | API Route | Webhook de status Twilio (assinatura HMAC validada) |
+| `/api/webhooks/zapi` | API Route | Webhook de status Z-API (client-token validado) |
 
 ### Estrutura de Arquivos
 
@@ -265,27 +280,30 @@ casa-vo-sebastiana/
 │   │   ├── page.tsx                  # Passo 1: calendário
 │   │   ├── CalendarioAgendamento.tsx # Client: react-day-picker
 │   │   ├── [data]/page.tsx           # Passo 2: grid de horários
-│   │   └── confirmar/page.tsx        # Passo 3: BookingForm
+│   │   ├── confirmar/page.tsx        # Passo 3: BookingForm
+│   │   └── eventos/                  # Lista + inscrição em eventos recorrentes
 │   ├── agendamento/[token]/
 │   │   ├── page.tsx                  # Detalhe público
 │   │   └── cancelar/page.tsx         # Cancelar agendamento
+│   ├── historico/                    # Busca de histórico do consulente por telefone
+│   ├── mediuns/[token]/              # Área do médium: assumir/liberar + mural de recados
 │   ├── auth/
 │   │   ├── login/page.tsx            # Email OTP
 │   │   └── callback/route.ts         # Supabase callback
 │   ├── admin/
-│   │   ├── layout.tsx                # Sidebar autenticada
+│   │   ├── layout.tsx                # Sidebar autenticada — gate de sessão + ADMIN_EMAILS
 │   │   ├── AdminNav.tsx              # Client: navegação lateral
-│   │   ├── page.tsx                  # Dashboard stats
+│   │   ├── page.tsx                  # Dashboard stats + calendário mensal
 │   │   ├── agendamentos/page.tsx     # Lista + filtros
-│   │   ├── agendamentos/FiltrosAgendamentos.tsx
-│   │   ├── disponibilidade/page.tsx  # Grade semanal
-│   │   ├── disponibilidade/GradeHorariosEditor.tsx
-│   │   ├── disponibilidade/BloqueiosLista.tsx
-│   │   └── consulentes/page.tsx      # Lista de clientes
+│   │   ├── disponibilidade/page.tsx  # Grade semanal + bloqueios
+│   │   ├── consulentes/page.tsx      # Lista de clientes
+│   │   ├── mediuns/page.tsx          # Cadastro de médiuns
+│   │   ├── eventos/page.tsx          # Cadastro/edição de eventos
+│   │   └── recados/page.tsx          # Mural de recados
 │   └── api/
-│       ├── cron/lembretes/route.ts   # Cron diário
-│       ├── webhooks/twilio/route.ts  # Status Twilio
-│       └── webhooks/zapi/route.ts    # Status Z-API
+│       ├── cron/lembretes/route.ts   # Cron diário: lembretes + retry da fila
+│       ├── webhooks/twilio/route.ts  # Status Twilio (assinatura validada)
+│       └── webhooks/zapi/route.ts    # Status Z-API (client-token validado)
 │
 ├── components/
 │   ├── booking/
@@ -304,36 +322,55 @@ casa-vo-sebastiana/
 │   ├── supabase/
 │   │   ├── client.ts                 # createClient() — browser (anon key)
 │   │   └── server.ts                 # createAdminClient() + createServerSessionClient()
+│   ├── auth/
+│   │   ├── emails.ts                 # emailAutorizado() — lógica pura da allowlist ADMIN_EMAILS
+│   │   └── admin.ts                  # getAdminUser()/verificarAdmin() — usados por layout e actions
 │   ├── whatsapp/
 │   │   ├── types.ts                  # Interface ProvedorWhatsApp
 │   │   ├── factory.ts                # getProvedorWhatsApp() factory
-│   │   ├── templates.ts              # mensagemConfirmacao/Lembrete/Cancelamento
+│   │   ├── templates.ts              # mensagens de confirmação/lembrete/cancelamento/eventos
 │   │   └── providers/
 │   │       ├── zapi.ts               # ZApiProvider (REST)
 │   │       └── twilio.ts             # TwilioProvider (HTTP Basic)
 │   ├── actions/
-│   │   ├── booking.ts                # criarAgendamento + cancelarAgendamento
-│   │   └── admin.ts                  # atualizarStatus + bloquearData + toggleGrade
+│   │   ├── booking.ts                # criarAgendamento + inscreverEmEvento + cancelarAgendamento
+│   │   ├── admin.ts                  # CRUD de agendamentos/grade/médiuns/eventos/clientes
+│   │   ├── mediuns.ts                # assumirAgendamento + liberarAgendamento (via token)
+│   │   └── recados.ts                # CRUD do mural de recados
 │   ├── queries/
 │   │   ├── availability.ts           # getSlotsDisponiveis + getDatasDisponiveis
-│   │   └── appointments.ts           # listarAgendamentos + getEstatisticas + …
+│   │   ├── appointments.ts           # listarAgendamentos + getEstatisticas + …
+│   │   ├── calendario.ts             # Contagens por dia para o calendário do dashboard
+│   │   ├── eventos.ts                # Ocorrências e contagem de inscritos por evento
+│   │   ├── mediuns.ts                # Listagem de médiuns
+│   │   └── recados.ts                # Listagem de recados ativos
 │   └── utils/
 │       ├── date.ts                   # Helpers date-fns-tz (America/Sao_Paulo)
 │       ├── phone.ts                  # normalizarTelefone + validarTelefone
+│       ├── recorrencia.ts            # Cálculo de ocorrências de eventos recorrentes
 │       └── cn.ts                     # clsx + tailwind-merge
 │
 ├── types/
 │   └── database.ts                   # Tipos TypeScript das tabelas
 │
 ├── supabase/
-│   ├── migrations/0001_initial.sql   # Schema completo com RLS
+│   ├── migrations/
+│   │   ├── 0001_initial.sql          # Schema base + RLS (clientes, agendamentos, grade…)
+│   │   ├── 0002_mediuns.sql          # Tabela de médiuns + token de acesso
+│   │   ├── 0003_whatsapp_queue.sql   # Fila de retry de mensagens com falha
+│   │   ├── 0004_eventos.sql          # Atendimento por evento com recorrência
+│   │   └── 0005_recados.sql          # Mural de recados
 │   └── seed.sql                      # Grade padrão Ter–Sáb
 │
-├── middleware.ts                     # Protege /admin/* → redireciona para login
+├── __tests__/                        # Vitest: actions, queries, utils, templates, componentes
+├── load-tests/                       # k6: smoke, load e stress test
+├── .github/workflows/ci.yml          # Type-check + lint + test em cada push/PR
+├── middleware.ts                     # Protege /admin/* → sessão válida + ADMIN_EMAILS
 ├── vercel.json                       # Cron: 0 12 * * * (09:00 BRT)
-├── next.config.mjs                   # Server Actions allowedOrigins
+├── next.config.mjs                   # Headers de segurança + Server Actions allowedOrigins
 ├── tailwind.config.ts
 ├── tsconfig.json
+├── vitest.config.ts
 ├── components.json                   # shadcn/ui config
 └── .env.example                      # Template de variáveis
 ```
@@ -385,7 +422,12 @@ WHATSAPP_PROVIDER=twilio   # ou zapi
 3. Receba o magic link por e-mail (válido por 1 hora)
 4. Clique no link → redireciona para `/admin`
 
-O middleware (`middleware.ts`) protege todas as rotas `/admin/*`. Qualquer acesso sem sessão ativa é redirecionado para `/auth/login`.
+O middleware (`middleware.ts`) protege todas as rotas `/admin/*`: exige sessão válida (revalidada
+via `getUser()`) **e**, se `ADMIN_EMAILS` estiver configurado, que o e-mail do usuário esteja na
+lista — quem não estiver é redirecionado para `/auth/login`, mesmo com uma sessão Supabase válida.
+`app/admin/layout.tsx` repete a mesma checagem (via `lib/auth/admin.ts`) como defesa em
+profundidade. As Server Actions de mutação (`lib/actions/admin.ts`, `lib/actions/recados.ts`)
+usam o mesmo helper.
 
 > **Configurar admin:** No Supabase Dashboard → Authentication → Users → "Invite user" com o e-mail do administrador.
 
