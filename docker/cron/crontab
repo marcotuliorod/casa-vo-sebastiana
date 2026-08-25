@@ -1,0 +1,2 @@
+# Lembretes de 24h — mesmo horário do cron nativo da Vercel (vercel.json): 12:00 UTC (09:00 BRT)
+0 12 * * * curl -fsS -H "Authorization: Bearer $CRON_SECRET" "http://app:3000/api/cron/lembretes" >> /var/log/cron.log 2>&1

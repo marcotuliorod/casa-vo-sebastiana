@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Bundle mínimo para a imagem Docker (self-hosted, sem Vercel)
+  output: 'standalone',
   async headers() {
     return [
       {

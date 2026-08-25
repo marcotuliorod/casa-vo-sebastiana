@@ -8,6 +8,9 @@ export const metadata = {
   title: 'Eventos — Casa de Vó Sebastiana',
 }
 
+// Vagas disponíveis mudam a cada inscrição — nunca prerenderizar estaticamente
+export const dynamic = 'force-dynamic'
+
 export default async function EventosPublicosPage() {
   const eventos = await listarEventosAtivos()
 

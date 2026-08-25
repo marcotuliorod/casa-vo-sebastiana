@@ -1,0 +1,88 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-casa_vo_sebastiana}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-casa_vo_sebastiana}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+      - web
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    networks:
+      - web
+
+  cron:
+    build:
+      context: ./docker/cron
+    restart: unless-stopped
+    environment:
+      CRON_SECRET: ${CRON_SECRET}
+    depends_on:
+      - app
+    networks:
+      - internal
+
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-casa_vo_sebastiana}
+    volumes:
+      - ./docker/backup/backup.sh:/backup.sh:ro
+      - backup_data:/backups
+    entrypoint: ['/bin/sh', '/backup.sh']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+
+networks:
+  internal:
+  web:
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
+  backup_data:
