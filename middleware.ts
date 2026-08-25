@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { emailAutorizado } from '@/lib/auth/emails'
 
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request })
@@ -29,10 +30,10 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Renovar sessão se necessário
-  const { data: { session } } = await supabase.auth.getSession()
+  // getUser() revalida o token contra o servidor de Auth (getSession() só decodifica o cookie local)
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!session) {
+  if (!user || !emailAutorizado(user.email)) {
     const loginUrl = new URL('/auth/login', request.url)
     return NextResponse.redirect(loginUrl)
   }

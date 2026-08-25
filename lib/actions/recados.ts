@@ -2,16 +2,8 @@
 
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import { createAdminClient, createServerSessionClient } from '@/lib/supabase/server'
-
-async function verificarAdmin(): Promise<string | null> {
-  const supabase = await createServerSessionClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim()) ?? []
-  if (adminEmails.length > 0 && !adminEmails.includes(user.email ?? '')) return null
-  return user.id
-}
+import { createAdminClient } from '@/lib/supabase/server'
+import { verificarAdmin } from '@/lib/auth/admin'
 
 const schemaRecado = z.object({
   titulo:    z.string().min(2, 'Título muito curto').max(100, 'Título muito longo'),
@@ -31,8 +23,8 @@ export async function criarRecado(
   _estado: EstadoFormRecado,
   formData: FormData
 ): Promise<EstadoFormRecado> {
-  const admin = await verificarAdmin()
-  if (!admin) return { erro: 'Não autorizado' }
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
 
   const parsed = schemaRecado.safeParse({
     titulo:    formData.get('titulo'),
@@ -60,8 +52,8 @@ export async function editarRecado(
   _estado: EstadoFormRecado,
   formData: FormData
 ): Promise<EstadoFormRecado> {
-  const admin = await verificarAdmin()
-  if (!admin) return { erro: 'Não autorizado' }
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
 
   const parsed = schemaRecado.safeParse({
     titulo:    formData.get('titulo'),
@@ -88,8 +80,8 @@ export async function editarRecado(
 }
 
 export async function excluirRecado(id: string): Promise<{ erro?: string }> {
-  const admin = await verificarAdmin()
-  if (!admin) return { erro: 'Não autorizado' }
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
 
   const supabase = createAdminClient()
   const { error } = await supabase
@@ -107,8 +99,8 @@ export async function toggleFixadoRecado(
   id: string,
   fixado: boolean
 ): Promise<{ erro?: string }> {
-  const admin = await verificarAdmin()
-  if (!admin) return { erro: 'Não autorizado' }
+  const erroAuth = await verificarAdmin()
+  if (erroAuth) return { erro: erroAuth }
 
   const supabase = createAdminClient()
   const { error } = await supabase
