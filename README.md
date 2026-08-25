@@ -10,13 +10,15 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 |--------|-----------|
 | Framework | Next.js 14.2.5 (App Router) + TypeScript |
 | Estilo | Tailwind CSS + shadcn/ui (Radix UI) |
-| Banco de dados | Supabase (PostgreSQL 17) |
-| Autenticação | Supabase Auth — Magic Link (email OTP) |
+| Banco de dados | Postgres 17 self-hosted (Docker) + Drizzle ORM |
+| Autenticação | Auth.js (NextAuth v5) — Magic Link via Resend |
 | WhatsApp | Z-API (padrão) ou Twilio (Strategy Pattern) |
-| Deploy | Vercel (com cron jobs nativos) |
+| Deploy | Docker Compose self-hosted (app + Postgres + Caddy + cron + backup) |
 | Datas | date-fns + date-fns-tz (America/Sao_Paulo) |
 | Calendário | react-day-picker |
 | Ícones | Lucide React |
+
+> Projeto migrado do Supabase (banco gerenciado + Auth) para esta stack self-hosted. Ver `supabase/migrations/*.sql` para o histórico do schema original — a fonte de verdade atual é `lib/db/schema.ts` + `drizzle/`.
 
 ---
 
@@ -40,7 +42,7 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 
 ### Automação WhatsApp
 - **Confirmação** — enviada ao criar um agendamento
-- **Lembrete 24h** — cron job diário às 09:00 BRT
+- **Lembrete 24h** — cron diário às 09:00 BRT (container `cron` do Compose)
 - **Cancelamento** — enviado ao cancelar
 
 ---
@@ -48,7 +50,8 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 ## Pré-requisitos
 
 - Node.js 18+
-- Conta no [Supabase](https://supabase.com) (gratuita)
+- Docker e Docker Compose
+- Conta no [Resend](https://resend.com) (gratuita) — envio do magic link de login
 - Conta no [Z-API](https://z-api.io) ou [Twilio](https://twilio.com) para WhatsApp
 
 ---
@@ -67,55 +70,65 @@ npm install
 Copie o arquivo de exemplo e preencha os valores:
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env
 ```
 
-Edite `.env.local`:
+Os campos mais importantes (ver `.env.example` para a lista completa e comentada):
 
 ```bash
-# ─── Supabase ─────────────────────────────────────────────────
-# Encontre em: supabase.com → projeto → Settings → API
-NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...          # "anon" key — segura para o cliente
-SUPABASE_SERVICE_ROLE_KEY=eyJ...              # "service_role" — NUNCA expor no front
+# ─── Postgres / Docker Compose ──────────────────────────────────
+POSTGRES_USER=app
+POSTGRES_PASSWORD=              # escolha uma senha
+POSTGRES_DB=casa_vo_sebastiana
+# IMPORTANTE: a senha aqui precisa ser IDÊNTICA a POSTGRES_PASSWORD acima —
+# env_file não faz substituição de variável, as duas não se sincronizam sozinhas.
+DATABASE_URL=postgres://app:MESMA_SENHA_ACIMA@postgres:5432/casa_vo_sebastiana
 
-# ─── WhatsApp ─────────────────────────────────────────────────
-WHATSAPP_PROVIDER=zapi                        # 'zapi' ou 'twilio'
+# ─── Autenticação (Auth.js) ─────────────────────────────────────
+AUTH_SECRET=                    # gere com: npx auth secret
+AUTH_URL=http://localhost:3000  # URL pública do site
+RESEND_API_KEY=re_...
+AUTH_EMAIL_FROM=Casa de Vó Sebastiana <login@seudominio.com.br>
 
-# Z-API (https://app.z-api.io)
+# ─── WhatsApp ───────────────────────────────────────────────────
+WHATSAPP_PROVIDER=zapi          # 'zapi' ou 'twilio'
 ZAPI_INSTANCE_ID=
 ZAPI_INSTANCE_TOKEN=
 ZAPI_CLIENT_TOKEN=
 
-# Twilio (alternativo)
-TWILIO_ACCOUNT_SID=ACxxxxxxxx
-TWILIO_AUTH_TOKEN=
-TWILIO_WHATSAPP_FROM=+14155238886
-
-# ─── Cron ─────────────────────────────────────────────────────
-# Gere com: openssl rand -hex 32
-CRON_SECRET=
-
-# ─── App ──────────────────────────────────────────────────────
+# ─── Cron / Admin ───────────────────────────────────────────────
+CRON_SECRET=                    # gere com: openssl rand -hex 32
+ADMIN_EMAILS=                   # emails autorizados a acessar /admin, separados por vírgula
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 ```
 
-> **service_role key:** Acesse o Supabase Dashboard → Settings → API → "service_role" → clique em "Reveal"
-
 ### 3. Banco de dados
 
-O banco já está migrado no projeto Supabase `yvrxjpfpmlzsnfszslzd`. Para replicar em outro projeto:
+**Opção A — Docker Compose (recomendado, sobe tudo junto):**
 
 ```bash
-# Via Supabase CLI
-supabase db push
+docker compose up -d --build
+docker compose exec app npx drizzle-kit migrate
+```
 
-# Ou execute manualmente no SQL Editor do Supabase:
-# 1. supabase/migrations/0001_initial.sql  (schema + RLS)
-# 2. supabase/seed.sql                     (horários padrão)
+**Opção B — Postgres local avulso, para rodar `npm run dev` fora do Docker:**
+
+```bash
+docker run -d --name pg-dev -e POSTGRES_USER=app -e POSTGRES_PASSWORD=SUA_SENHA \
+  -e POSTGRES_DB=casa_vo_sebastiana -p 5432:5432 postgres:17-alpine
+
+DATABASE_URL=postgres://app:SUA_SENHA@localhost:5432/casa_vo_sebastiana npm run db:migrate
+```
+
+Em ambas as opções, depois de migrar, popule a grade de horários padrão (terça a sábado):
+
+```bash
+psql "$DATABASE_URL" -f drizzle/seed.sql
 ```
 
 ### 4. Rodar localmente
+
+Com o Postgres já de pé (Opção B acima):
 
 ```bash
 npm run dev
@@ -123,36 +136,49 @@ npm run dev
 
 Acesse: http://localhost:3000
 
+Ou, para rodar tudo via Docker (mais próximo de produção):
+
+```bash
+docker compose up -d --build
+```
+
+Acesse: https://localhost (certificado local automático do Caddy)
+
 ---
 
 ## Variáveis de Ambiente — Referência Completa
 
 | Variável | Obrigatória | Descrição |
 |----------|-------------|-----------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Sim | URL do projeto Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Sim | Chave pública anon (exposta no client) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Sim | Chave secreta service_role (só server-side) |
+| `DATABASE_URL` | Sim | Connection string do Postgres usada pela aplicação |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Sim | Credenciais do container Postgres — a senha precisa bater com a de `DATABASE_URL` |
+| `AUTH_SECRET` | Sim | Chave de assinatura das sessões JWT do Auth.js |
+| `AUTH_URL` | Sim | URL pública do site — evita links quebrados atrás de proxy |
+| `RESEND_API_KEY` | Sim | API key do Resend, usada pelo Auth.js para enviar o magic link |
+| `AUTH_EMAIL_FROM` | Sim | Remetente do e-mail de login |
+| `DOMAIN` | Não | Domínio servido pelo Caddy (TLS automático); `localhost` para testes locais |
 | `WHATSAPP_PROVIDER` | Sim | `zapi` ou `twilio` |
-| `ZAPI_INSTANCE_ID` | Se PROVIDER=zapi | ID da instância Z-API |
-| `ZAPI_INSTANCE_TOKEN` | Se PROVIDER=zapi | Token da instância Z-API |
-| `ZAPI_CLIENT_TOKEN` | Se PROVIDER=zapi | Client Token Z-API (header) |
-| `TWILIO_ACCOUNT_SID` | Se PROVIDER=twilio | Account SID do Twilio |
-| `TWILIO_AUTH_TOKEN` | Se PROVIDER=twilio | Auth Token do Twilio |
-| `TWILIO_WHATSAPP_FROM` | Se PROVIDER=twilio | Número WhatsApp Twilio |
-| `CRON_SECRET` | Sim | Token para autenticar chamadas do cron |
+| `ZAPI_INSTANCE_ID` / `ZAPI_INSTANCE_TOKEN` / `ZAPI_CLIENT_TOKEN` | Se PROVIDER=zapi | Credenciais Z-API |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | Se PROVIDER=twilio | Credenciais Twilio |
+| `CRON_SECRET` | Sim | Token para autenticar chamadas do cron (mínimo 32 caracteres) |
+| `ADMIN_EMAILS` | Não | Lista de e-mails autorizados no `/admin`, separados por vírgula. Vazio = qualquer usuário autenticado |
+| `ADMIN_WHATSAPP` | Não | Número que recebe notificações de novos agendamentos/cancelamentos |
 | `NEXT_PUBLIC_BASE_URL` | Sim | URL base para links nas mensagens WhatsApp |
 
 ---
 
 ## Banco de Dados
 
-### Projeto Supabase
+### Postgres self-hosted
 
-- **Projeto:** `Casa_de_Vo_Sebastiana`
-- **ID:** `yvrxjpfpmlzsnfszslzd`
-- **URL:** `https://yvrxjpfpmlzsnfszslzd.supabase.co`
-- **Região:** us-west-2
-- **PostgreSQL:** 17.6.1
+O banco roda em container Docker (`postgres:17-alpine`), na rede interna do Compose — **nunca exposto à internet**. Schema e migrations vivem em `lib/db/schema.ts` (Drizzle) + `drizzle/*.sql` (gerado pelo `drizzle-kit`, com extensões/constraint/triggers complementados manualmente onde o DSL do Drizzle não alcança).
+
+Comandos úteis:
+```bash
+npm run db:generate   # gera uma nova migration a partir de mudanças em lib/db/schema.ts
+npm run db:migrate    # aplica migrations pendentes
+npm run db:studio     # abre o Drizzle Studio (explorador de dados no navegador)
+```
 
 ### Tabelas
 
@@ -201,7 +227,7 @@ Acesse: http://localhost:3000
 | `criado_em` | TIMESTAMPTZ | |
 | `atualizado_em` | TIMESTAMPTZ | Auto-atualizado por trigger |
 
-> **Constraint anti-double-booking:** exclusion constraint GIST impede agendamentos sobrepostos com status `pendente` ou `confirmado`. Erro Postgres `23P01` é capturado e exibe mensagem amigável ao usuário.
+> **Constraint anti-double-booking:** exclusion constraint GIST impede agendamentos sobrepostos com status `pendente` ou `confirmado` (exceto agendamentos de evento, que têm capacidade > 1). Erro Postgres `23P01` é capturado (via `lib/db/errors.ts`) e exibe mensagem amigável ao usuário.
 
 #### `logs_whatsapp`
 | Coluna | Tipo | Descrição |
@@ -216,25 +242,12 @@ Acesse: http://localhost:3000
 | `status` | ENUM | `na_fila`, `enviado`, `entregue`, `falhou` |
 | `mensagem_erro` | TEXT | Detalhes em caso de falha |
 
-### Row Level Security (RLS)
+### Autorização — camada de aplicação, não RLS
 
-| Tabela | Anon (público) | Authenticated (admin) |
-|--------|---------------|----------------------|
-| `grade_horarios` | SELECT | ALL |
-| `datas_bloqueadas` | SELECT | ALL |
-| `eventos` | SELECT (somente `ativo = true`) | ALL |
-| `recados` | SELECT (somente `ativo = true`) | — (escrita via `service_role`) |
-| `clientes` | — | ALL |
-| `agendamentos` | — | ALL |
-| `logs_whatsapp` | — | ALL |
-| `mediuns` | — | ALL |
-| `whatsapp_queue` | — | — (acesso só via `service_role`) |
-
-> Server Actions usam `service_role` (bypass RLS) para operações públicas como criar agendamento sem login.
-> A allowlist `ADMIN_EMAILS` é aplicada na camada de aplicação (middleware + Server Actions via
-> `lib/auth/admin.ts`), não nas policies acima — qualquer usuário `authenticated` passa nas
-> policies de RLS. Não exponha o cliente `anon`+sessão para consultar essas tabelas diretamente
-> fora do fluxo já protegido do app.
+Diferente do Supabase, este Postgres não usa Row Level Security. Toda autorização é feita na camada de aplicação:
+- `middleware.ts` protege `/admin/*` (sessão Auth.js válida + `ADMIN_EMAILS`).
+- Cada Server Action de mutação em `lib/actions/*` chama `verificarAdmin()` (`lib/auth/admin.ts`) antes de tocar o banco.
+- Rotas públicas (agendamento, cancelamento, mural do médium via token) não exigem sessão — a validação é o token em si (`token_publico`/`token_acesso`), não uma policy de banco.
 
 ---
 
@@ -245,17 +258,17 @@ Acesse: http://localhost:3000
 | Rota | Tipo | Descrição |
 |------|------|-----------|
 | `/` | Server Component | Redireciona para `/agendar` |
-| `/agendar` | Server Component | Passo 1 — calendário |
+| `/agendar` | Server Component | Passo 1 — calendário (`dynamic = 'force-dynamic'`: disponibilidade muda a cada agendamento) |
 | `/agendar/[data]` | Server Component | Passo 2 — slots disponíveis |
 | `/agendar/confirmar` | Server Component | Passo 3 — formulário |
-| `/agendar/eventos` | Server Component | Lista de eventos com inscrição aberta |
+| `/agendar/eventos` | Server Component | Lista de eventos com inscrição aberta (`force-dynamic`) |
 | `/agendar/eventos/[id]` | Server Component | Inscrição em um evento |
 | `/agendamento/[token]` | Server Component | Detalhe público (sem login) |
 | `/agendamento/[token]/cancelar` | Client Component | Confirmação de cancelamento |
 | `/historico` | Server Component | Busca de histórico do consulente por telefone |
 | `/mediuns/[token]` | Server Component | Área do médium (assumir/liberar agendamentos, mural de recados) |
-| `/auth/login` | Client Component | Login admin (magic link) |
-| `/auth/callback` | API Route | Callback OAuth Supabase |
+| `/auth/login` | Client Component | Login admin (magic link via Auth.js) |
+| `/api/auth/[...nextauth]` | API Route | Rotas nativas do Auth.js (signin, callback, session, csrf…) |
 | `/admin` | Server Component | Dashboard (protegido) |
 | `/admin/agendamentos` | Server Component | Lista com filtros |
 | `/admin/disponibilidade` | Server Component | Grade e bloqueios |
@@ -263,7 +276,7 @@ Acesse: http://localhost:3000
 | `/admin/mediuns` | Server Component | Cadastro de médiuns |
 | `/admin/eventos` | Server Component | Cadastro/edição de eventos recorrentes |
 | `/admin/recados` | Server Component | Mural de recados para médiuns |
-| `/api/cron/lembretes` | API Route | Cron job diário: lembretes (horário + evento) e retry da fila de WhatsApp |
+| `/api/cron/lembretes` | API Route | Disparado pelo container `cron`: lembretes (horário + evento) e retry da fila de WhatsApp |
 | `/api/webhooks/twilio` | API Route | Webhook de status Twilio (assinatura HMAC validada) |
 | `/api/webhooks/zapi` | API Route | Webhook de status Z-API (client-token validado) |
 
@@ -288,8 +301,7 @@ casa-vo-sebastiana/
 │   ├── historico/                    # Busca de histórico do consulente por telefone
 │   ├── mediuns/[token]/              # Área do médium: assumir/liberar + mural de recados
 │   ├── auth/
-│   │   ├── login/page.tsx            # Email OTP
-│   │   └── callback/route.ts         # Supabase callback
+│   │   └── login/page.tsx            # Magic link (Auth.js)
 │   ├── admin/
 │   │   ├── layout.tsx                # Sidebar autenticada — gate de sessão + ADMIN_EMAILS
 │   │   ├── AdminNav.tsx              # Client: navegação lateral
@@ -301,9 +313,9 @@ casa-vo-sebastiana/
 │   │   ├── eventos/page.tsx          # Cadastro/edição de eventos
 │   │   └── recados/page.tsx          # Mural de recados
 │   └── api/
-│       ├── cron/lembretes/route.ts   # Cron diário: lembretes + retry da fila
-│       ├── webhooks/twilio/route.ts  # Status Twilio (assinatura validada)
-│       └── webhooks/zapi/route.ts    # Status Z-API (client-token validado)
+│       ├── auth/[...nextauth]/route.ts # Rotas nativas do Auth.js
+│       ├── cron/lembretes/route.ts   # Lembretes + retry da fila (disparado pelo container cron)
+│       └── webhooks/twilio/route.ts, webhooks/zapi/route.ts
 │
 ├── components/
 │   ├── booking/
@@ -319,10 +331,14 @@ casa-vo-sebastiana/
 │   └── ui/                           # shadcn/ui: badge, button, card, input…
 │
 ├── lib/
-│   ├── supabase/
-│   │   ├── client.ts                 # createClient() — browser (anon key)
-│   │   └── server.ts                 # createAdminClient() + createServerSessionClient()
+│   ├── db/
+│   │   ├── index.ts                  # Instância singleton do Drizzle
+│   │   ├── schema.ts                 # Schema completo (tabelas + enums + relations)
+│   │   ├── mappers.ts                # Linhas do Drizzle → tipos de app (types/database.ts)
+│   │   └── errors.ts                 # mensagemErro()/codigoPg() — erros do driver postgres
 │   ├── auth/
+│   │   ├── config.edge.ts            # Config Auth.js edge-safe (usada por middleware.ts)
+│   │   ├── config.ts                 # Config completa (adapter + provider Resend)
 │   │   ├── emails.ts                 # emailAutorizado() — lógica pura da allowlist ADMIN_EMAILS
 │   │   └── admin.ts                  # getAdminUser()/verificarAdmin() — usados por layout e actions
 │   ├── whatsapp/
@@ -353,21 +369,30 @@ casa-vo-sebastiana/
 ├── types/
 │   └── database.ts                   # Tipos TypeScript das tabelas
 │
-├── supabase/
-│   ├── migrations/
-│   │   ├── 0001_initial.sql          # Schema base + RLS (clientes, agendamentos, grade…)
-│   │   ├── 0002_mediuns.sql          # Tabela de médiuns + token de acesso
-│   │   ├── 0003_whatsapp_queue.sql   # Fila de retry de mensagens com falha
-│   │   ├── 0004_eventos.sql          # Atendimento por evento com recorrência
-│   │   └── 0005_recados.sql          # Mural de recados
-│   └── seed.sql                      # Grade padrão Ter–Sáb
+├── drizzle/
+│   ├── 0000_*.sql                    # Migration gerada + extensions/constraint/triggers manuais
+│   ├── seed.sql                      # Grade padrão Ter–Sáb
+│   └── meta/                         # Journal do drizzle-kit
 │
-├── __tests__/                        # Vitest: actions, queries, utils, templates, componentes
+├── docker/
+│   ├── postgres/init.sql             # Extensions criadas no primeiro boot do container
+│   ├── caddy/Caddyfile               # Reverse proxy + TLS automático
+│   ├── cron/                         # Container que dispara /api/cron/lembretes
+│   └── backup/backup.sh              # pg_dump diário com retenção
+│
+├── supabase/                          # Histórico — migrations originais do Supabase (pré-migração)
+│   ├── migrations/*.sql
+│   └── seed.sql
+│
+├── __tests__/                         # Vitest: actions, queries, utils, templates, componentes
+│   └── db/                            # Testes de integração contra Postgres real (precisam de DATABASE_URL)
 ├── load-tests/                       # k6: smoke, load e stress test
-├── .github/workflows/ci.yml          # Type-check + lint + test em cada push/PR
-├── middleware.ts                     # Protege /admin/* → sessão válida + ADMIN_EMAILS
-├── vercel.json                       # Cron: 0 12 * * * (09:00 BRT)
-├── next.config.mjs                   # Headers de segurança + Server Actions allowedOrigins
+├── .github/workflows/ci.yml          # Type-check + lint + test (com Postgres real) em cada push/PR
+├── middleware.ts                     # Protege /admin/* → sessão Auth.js válida + ADMIN_EMAILS
+├── Dockerfile                        # Build standalone do Next.js
+├── docker-compose.yml                # app + postgres + proxy + cron + backup
+├── drizzle.config.ts                 # Config do drizzle-kit
+├── next.config.mjs                   # output: standalone, headers de segurança, Server Actions
 ├── tailwind.config.ts
 ├── tsconfig.json
 ├── vitest.config.ts
@@ -398,7 +423,7 @@ const provedor = getProvedorWhatsApp() // ZApiProvider | TwilioProvider
 
 ### Trocar de provedor
 
-Basta alterar uma linha no `.env.local`:
+Basta alterar uma linha no `.env`:
 ```bash
 WHATSAPP_PROVIDER=twilio   # ou zapi
 ```
@@ -419,23 +444,28 @@ WHATSAPP_PROVIDER=twilio   # ou zapi
 
 1. Acesse `/auth/login`
 2. Digite o e-mail do administrador
-3. Receba o magic link por e-mail (válido por 1 hora)
+3. Receba o magic link por e-mail via Resend (válido por 24h)
 4. Clique no link → redireciona para `/admin`
 
-O middleware (`middleware.ts`) protege todas as rotas `/admin/*`: exige sessão válida (revalidada
-via `getUser()`) **e**, se `ADMIN_EMAILS` estiver configurado, que o e-mail do usuário esteja na
-lista — quem não estiver é redirecionado para `/auth/login`, mesmo com uma sessão Supabase válida.
-`app/admin/layout.tsx` repete a mesma checagem (via `lib/auth/admin.ts`) como defesa em
-profundidade. As Server Actions de mutação (`lib/actions/admin.ts`, `lib/actions/recados.ts`)
-usam o mesmo helper.
+`middleware.ts` protege todas as rotas `/admin/*`: exige sessão Auth.js válida (JWT) **e**, se
+`ADMIN_EMAILS` estiver configurado, que o e-mail do usuário esteja na lista — quem não estiver é
+redirecionado para `/auth/login`, mesmo com uma sessão válida. `app/admin/layout.tsx` repete a
+mesma checagem (via `lib/auth/admin.ts`) como defesa em profundidade. As Server Actions de mutação
+(`lib/actions/admin.ts`, `lib/actions/recados.ts`) usam o mesmo helper.
 
-> **Configurar admin:** No Supabase Dashboard → Authentication → Users → "Invite user" com o e-mail do administrador.
+A config do Auth.js é dividida em duas partes por causa do Edge Runtime: `lib/auth/config.edge.ts`
+(sem adapter, usada por `middleware.ts`) e `lib/auth/config.ts` (completa, com o adapter Drizzle e o
+provider Resend — usada em Server Actions, Server Components e na rota de API).
+
+> **Adicionar um admin:** basta incluir o e-mail em `ADMIN_EMAILS` (variável de ambiente) e a
+> pessoa fazer login normalmente pelo `/auth/login` — o registro do usuário é criado
+> automaticamente no primeiro login (não existe um passo de "convidar usuário" separado).
 
 ---
 
 ## Cron Job — Lembretes 24h
 
-**Schedule:** `0 12 * * *` (12:00 UTC = 09:00 BRT)
+**Schedule:** `0 12 * * *` (12:00 UTC = 09:00 BRT), disparado pelo container `cron` do Docker Compose (ver `docker/cron/`).
 
 **Endpoint:** `GET /api/cron/lembretes`
 
@@ -459,38 +489,40 @@ curl -H "Authorization: Bearer SEU_CRON_SECRET" \
 
 ---
 
-## Deploy na Vercel
+## Deploy self-hosted (Docker Compose)
 
-### 1. Conectar repositório
+### 1. Provisionar o host
+
+Qualquer servidor com Docker e Docker Compose (VPS, servidor próprio etc.). Aponte o domínio desejado para o IP do servidor.
+
+### 2. Configurar `.env`
+
+Copie `.env.example` para `.env` no servidor e preencha os valores de produção — em especial `DOMAIN` (domínio real, não `localhost`), `AUTH_URL` (`https://` + o mesmo domínio) e senhas fortes.
+
+### 3. Subir a stack
 
 ```bash
-vercel --prod
+git clone <repo> && cd casa-vo-sebastiana
+cp .env.example .env   # editar com os valores reais
+docker compose up -d --build
+docker compose exec app npx drizzle-kit migrate
 ```
 
-### 2. Configurar variáveis de ambiente
+O Caddy (serviço `proxy`) obtém certificado TLS automaticamente via Let's Encrypt para o `DOMAIN` configurado — só a porta 80/443 do proxy fica exposta; Postgres nunca é acessível de fora.
 
-No painel da Vercel → Settings → Environment Variables, adicione todas as variáveis do `.env.example` com os valores de produção.
+### 4. Deploy de atualizações
 
-### 3. Cron job
-
-O `vercel.json` já configura automaticamente o cron ao fazer deploy:
-
-```json
-{
-  "crons": [{
-    "path": "/api/cron/lembretes",
-    "schedule": "0 12 * * *"
-  }]
-}
-```
-
-> Cron jobs na Vercel requerem plano Pro ou superior.
-
-### 4. URL de produção
-
-Após o deploy, atualize a variável:
 ```bash
-NEXT_PUBLIC_BASE_URL=https://casavosebastiana.com.br
+git pull && docker compose up -d --build
+```
+
+Migrations pendentes precisam ser aplicadas manualmente após o deploy: `docker compose exec app npx drizzle-kit migrate`.
+
+### 5. Backups
+
+O container `backup` roda `pg_dump` diário com retenção de 14 dias, salvo no volume `backup_data`. Teste o restore periodicamente:
+```bash
+docker compose exec -T postgres pg_restore -U app -d casa_vo_sebastiana --clean < seu_backup.dump
 ```
 
 ---
@@ -498,10 +530,15 @@ NEXT_PUBLIC_BASE_URL=https://casavosebastiana.com.br
 ## Scripts Disponíveis
 
 ```bash
-npm run dev        # Servidor local com hot-reload (http://localhost:3000)
-npm run build      # Build de produção
-npm run start      # Servidor de produção local
-npm run lint       # ESLint
+npm run dev          # Servidor local com hot-reload (http://localhost:3000)
+npm run build        # Build de produção
+npm run start        # Servidor de produção local
+npm run lint         # ESLint
+npm run type-check   # tsc --noEmit
+npm run test         # Vitest (testes de integração precisam de DATABASE_URL)
+npm run db:generate  # Gera uma migration a partir de lib/db/schema.ts
+npm run db:migrate   # Aplica migrations pendentes
+npm run db:studio    # Drizzle Studio — explorador de dados no navegador
 ```
 
 ---
@@ -509,16 +546,20 @@ npm run lint       # ESLint
 ## Operações Comuns
 
 ### Adicionar novo admin
-No Supabase Dashboard → Authentication → Users → "Invite user"
+Adicione o e-mail em `ADMIN_EMAILS` e peça para a pessoa fazer login em `/auth/login` — o registro é criado no primeiro login via magic link.
 
 ### Testar o cron localmente
 ```bash
-curl -H "Authorization: Bearer $(grep CRON_SECRET .env.local | cut -d= -f2)" \
+curl -H "Authorization: Bearer $(grep CRON_SECRET .env | cut -d= -f2)" \
   http://localhost:3000/api/cron/lembretes
 ```
 
 ### Verificar logs de WhatsApp
-No Supabase Dashboard → Table Editor → `logs_whatsapp`
+```bash
+npm run db:studio   # abre o Drizzle Studio, navegue até logs_whatsapp
+# ou:
+docker compose exec postgres psql -U app -d casa_vo_sebastiana -c "SELECT * FROM logs_whatsapp ORDER BY criado_em DESC LIMIT 20;"
+```
 
 ### Bloquear um dia no painel
 Acesse `/admin/disponibilidade` → seção "Bloquear Data" → selecione a data → salvar
@@ -531,9 +572,12 @@ Acesse `/admin/disponibilidade` → seção "Bloquear Data" → selecione a data
 |---------|---------|--------|
 | Config file | `next.config.mjs` | Next.js 14.2.5 não suporta `.ts` para config |
 | Forms | `useFormState` + `useFormStatus` | React 18 (Next.js 14); `useActionState` é React 19+ |
-| RLS bypass | `service_role` nas Server Actions | Agendamentos públicos precisam escrever sem autenticação |
 | Anti-double-booking | Exclusion constraint GIST | Garantia a nível de banco, não só na aplicação |
 | Token público | `encode(gen_random_bytes(24), 'hex')` | 48 chars hex = 192 bits de entropia, não adivinhável |
 | Telefone | E.164 normalizado | Compatível com ambos provedores WhatsApp |
 | Timezone | `America/Sao_Paulo` via date-fns-tz | Evita bugs de horário de verão e UTC offset |
 | `useFormStatus` | Extraído em componente filho | Deve ser chamado dentro do form, não no componente que contém `<form>` |
+| RLS não recriada no Postgres novo | Autorização só na camada de aplicação | Todo acesso a dados já passava por um client privilegiado (equivalente ao `service_role`); RLS nunca foi o mecanismo real de enforcement — ver seção "Autorização" acima |
+| Config do Auth.js dividida (edge/full) | `config.edge.ts` sem adapter + `config.ts` completa | O adapter Drizzle carrega o driver `postgres` (Node/TCP), incompatível com o Edge Runtime onde `middleware.ts` roda — mesmo com sessão JWT, só o *import* do adapter já quebraria o middleware |
+| Erros do driver Postgres | `.cause.code`, não `.code` | drizzle-orm envolve o erro original num `DrizzleQueryError` — `lib/db/errors.ts` centraliza a extração |
+| Postgres sem porta exposta | Só a rede interna do Compose | App e banco no mesmo Compose — nenhuma porta do Postgres é publicada, reduzindo a superfície de ataque |
