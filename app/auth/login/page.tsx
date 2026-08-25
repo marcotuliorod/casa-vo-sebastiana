@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
-import { createClient } from '@/lib/supabase/client'
+import { signIn } from 'next-auth/react'
 import { Mail, Loader2, CheckCircle2 } from 'lucide-react'
 
 export default function LoginPage() {
@@ -20,15 +20,9 @@ export default function LoginPage() {
     setErro(null)
 
     startTransition(async () => {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
-      })
+      const resultado = await signIn('resend', { email, redirect: false })
 
-      if (error) {
+      if (resultado?.error) {
         setErro('Erro ao enviar o link. Verifique o email e tente novamente.')
       } else {
         setEnviado(true)

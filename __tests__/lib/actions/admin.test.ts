@@ -5,7 +5,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/supabase/server', () => ({
   createAdminClient: vi.fn(),
-  createServerSessionClient: vi.fn(),
+}))
+vi.mock('@/lib/auth/config', () => ({
+  auth: vi.fn(),
 }))
 vi.mock('@/lib/whatsapp/factory', () => ({
   getProvedorWhatsApp: vi.fn(),
@@ -18,7 +20,8 @@ vi.mock('@/lib/utils/phone', () => ({
   normalizarTelefone: vi.fn((t: string) => t),
 }))
 
-import { createAdminClient, createServerSessionClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
+import { auth } from '@/lib/auth/config'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
 import {
   atualizarStatusAgendamento,
@@ -43,7 +46,7 @@ import {
 } from '@/lib/actions/admin'
 
 const mockCreateAdminClient = createAdminClient as ReturnType<typeof vi.fn>
-const mockCreateServerSessionClient = createServerSessionClient as ReturnType<typeof vi.fn>
+const mockAuth = auth as ReturnType<typeof vi.fn>
 const mockGetProvedorWhatsApp = getProvedorWhatsApp as ReturnType<typeof vi.fn>
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -91,13 +94,9 @@ function mkDbClient(tableResponses: Record<string, TableResp | TableResp[]>) {
   }
 }
 
-/** Mock de sessão autenticada */
+/** Mock de sessão Auth.js autenticada */
 function mkSessionClient(user: { email: string; id: string } | null) {
-  return {
-    auth: {
-      getUser: vi.fn().mockResolvedValue({ data: { user } }),
-    },
-  }
+  return user ? { user, expires: '2099-01-01T00:00:00.000Z' } : null
 }
 
 /** Helpers para FormData */
@@ -112,7 +111,7 @@ beforeEach(() => {
   process.env.ADMIN_EMAILS = '' // sem restrição de email (qualquer user autenticado é admin)
 
   // Por padrão, retornar admin autorizado
-  mockCreateServerSessionClient.mockResolvedValue(
+  mockAuth.mockResolvedValue(
     mkSessionClient({ email: 'admin@test.com', id: 'uid-admin' })
   )
 })
@@ -122,7 +121,7 @@ beforeEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('atualizarStatusAgendamento', () => {
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
 
     const resultado = await atualizarStatusAgendamento('ag-1', 'confirmado')
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
@@ -207,7 +206,7 @@ describe('atualizarStatusAgendamento', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('bloquearData', () => {
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const fd = makeFormData({ data: '2025-05-01' })
     const resultado = await bloquearData(null, fd)
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
@@ -281,7 +280,7 @@ describe('desbloquearData', () => {
   })
 
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const resultado = await desbloquearData('bloq-1')
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
@@ -316,7 +315,7 @@ describe('toggleHorarioGrade', () => {
   })
 
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const resultado = await toggleHorarioGrade('slot-1', true)
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
@@ -390,7 +389,7 @@ describe('atualizarGradeHorarios', () => {
   })
 
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const resultado = await atualizarGradeHorarios(2, [])
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
@@ -401,7 +400,7 @@ describe('atualizarGradeHorarios', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('criarMedium', () => {
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const fd = makeFormData({ nome: 'Maria' })
     const resultado = await criarMedium(null, fd)
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
@@ -579,7 +578,7 @@ describe('criarEvento', () => {
   })
 
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const fd = makeFormData(eventValido)
     const resultado = await criarEvento(null, fd)
     expect(resultado?.erro).toBe('Não autorizado.')
@@ -616,7 +615,7 @@ describe('editarEvento', () => {
   })
 
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const fd = makeFormData(eventoValido)
     const resultado = await editarEvento('ev-1', null, fd)
     expect(resultado?.erro).toBe('Não autorizado.')
@@ -685,7 +684,7 @@ describe('excluirEvento', () => {
   })
 
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const resultado = await excluirEvento('ev-1')
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
@@ -754,7 +753,7 @@ describe('excluirAgendamento', () => {
   })
 
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const resultado = await excluirAgendamento('ag-1')
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
@@ -843,7 +842,7 @@ describe('excluirCliente', () => {
   })
 
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const resultado = await excluirCliente('cli-1')
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
@@ -905,7 +904,7 @@ describe('excluirMedium', () => {
   })
 
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const resultado = await excluirMedium('med-1')
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
@@ -917,7 +916,7 @@ describe('excluirMedium', () => {
 describe('verificarAdmin — whitelist de emails', () => {
   it('bloqueia usuário não listado no ADMIN_EMAILS', async () => {
     process.env.ADMIN_EMAILS = 'super@admin.com'
-    mockCreateServerSessionClient.mockResolvedValue(
+    mockAuth.mockResolvedValue(
       mkSessionClient({ email: 'outro@user.com', id: 'uid-2' })
     )
     const resultado = await excluirAgendamento('ag-1')
@@ -926,7 +925,7 @@ describe('verificarAdmin — whitelist de emails', () => {
 
   it('permite usuário listado no ADMIN_EMAILS', async () => {
     process.env.ADMIN_EMAILS = 'super@admin.com,admin@test.com'
-    mockCreateServerSessionClient.mockResolvedValue(
+    mockAuth.mockResolvedValue(
       mkSessionClient({ email: 'admin@test.com', id: 'uid-admin' })
     )
     mockCreateAdminClient.mockReturnValue(
