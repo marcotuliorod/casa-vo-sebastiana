@@ -8,6 +8,25 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: casa_vo_sebastiana
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d casa_vo_sebastiana"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://app:app@localhost:5432/casa_vo_sebastiana
+
     steps:
       - uses: actions/checkout@v4
 
@@ -23,6 +42,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Aplicar migrations do Drizzle (schema Postgres)
+        run: npm run db:migrate
 
       - name: Test
         run: npm test
