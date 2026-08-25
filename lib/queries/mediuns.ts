@@ -1,90 +1,85 @@
 // Queries de médiuns
 
-import { createAdminClient } from '@/lib/supabase/server'
+import { and, asc, eq, gte, inArray, isNull } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { mediuns, agendamentos } from '@/lib/db/schema'
+import { mapMedium, mapAgendamentoComCliente } from '@/lib/db/mappers'
 import type { Medium, AgendamentoComCliente } from '@/types/database'
 
 // Listar todos os médiuns (admin)
 export async function listarMediuns(): Promise<Medium[]> {
-  const supabase = createAdminClient()
-
-  const { data } = await supabase
-    .from('mediuns')
-    .select('*')
-    .order('nome')
-
-  return (data ?? []) as Medium[]
+  const linhas = await db.select().from(mediuns).orderBy(asc(mediuns.nome))
+  return linhas.map(mapMedium)
 }
 
 // Buscar médium pelo token de acesso (página pública)
 export async function getMediumPorToken(token: string): Promise<Medium | null> {
-  const supabase = createAdminClient()
+  const [linha] = await db
+    .select()
+    .from(mediuns)
+    .where(and(eq(mediuns.tokenAcesso, token), eq(mediuns.ativo, true)))
+    .limit(1)
 
-  const { data, error } = await supabase
-    .from('mediuns')
-    .select('*')
-    .eq('token_acesso', token)
-    .eq('ativo', true)
-    .single()
-
-  if (error) return null
-  return data as Medium
+  return linha ? mapMedium(linha) : null
 }
 
 // Agendamentos já atribuídos ao médium (a partir de hoje)
 export async function getAgendamentosDoMedium(
   mediumId: string
 ): Promise<AgendamentoComCliente[]> {
-  const supabase = createAdminClient()
   const hoje = new Date().toISOString().split('T')[0]
 
-  const { data } = await supabase
-    .from('agendamentos')
-    .select('*, clientes(*)')
-    .eq('medium_id', mediumId)
-    .gte('data_agendada', hoje)
-    .in('status', ['pendente', 'confirmado'])
-    .order('data_agendada')
-    .order('hora_inicio')
+  const linhas = await db.query.agendamentos.findMany({
+    where: and(
+      eq(agendamentos.mediumId, mediumId),
+      gte(agendamentos.dataAgendada, hoje),
+      inArray(agendamentos.status, ['pendente', 'confirmado'])
+    ),
+    with: { cliente: true },
+    orderBy: [asc(agendamentos.dataAgendada), asc(agendamentos.horaInicio)],
+  })
 
-  return (data ?? []) as AgendamentoComCliente[]
+  return linhas.map(mapAgendamentoComCliente)
 }
 
 // Mapa de id → nome para múltiplos médiuns (batch, para histórico do consulente)
 export async function getMediunsNomesMap(ids: string[]): Promise<Record<string, string>> {
   if (ids.length === 0) return {}
-  const supabase = createAdminClient()
-  const { data } = await supabase.from('mediuns').select('id, nome').in('id', ids)
-  const map: Record<string, string> = {}
-  for (const m of data ?? []) map[(m as { id: string; nome: string }).id] = (m as { id: string; nome: string }).nome
-  return map
+
+  const linhas = await db
+    .select({ id: mediuns.id, nome: mediuns.nome })
+    .from(mediuns)
+    .where(inArray(mediuns.id, ids))
+
+  const mapa: Record<string, string> = {}
+  for (const m of linhas) mapa[m.id] = m.nome
+  return mapa
 }
 
 // Buscar nome de um médium pelo id — para exibição na confirmação pública (US-10)
 export async function getMediumNome(id: string): Promise<string | null> {
-  const supabase = createAdminClient()
+  const [linha] = await db
+    .select({ nome: mediuns.nome })
+    .from(mediuns)
+    .where(eq(mediuns.id, id))
+    .limit(1)
 
-  const { data } = await supabase
-    .from('mediuns')
-    .select('nome')
-    .eq('id', id)
-    .single()
-
-  return (data as { nome: string } | null)?.nome ?? null
+  return linha?.nome ?? null
 }
 
 // Agendamentos sem médium atribuído — disponíveis para assumir
 export async function getAgendamentosDisponiveisMedium(): Promise<AgendamentoComCliente[]> {
-  const supabase = createAdminClient()
   const hoje = new Date().toISOString().split('T')[0]
 
-  const { data } = await supabase
-    .from('agendamentos')
-    .select('*, clientes(*)')
-    .is('medium_id', null)
-    .gte('data_agendada', hoje)
-    .in('status', ['pendente', 'confirmado'])
-    .order('data_agendada')
-    .order('hora_inicio')
+  const linhas = await db.query.agendamentos.findMany({
+    where: and(
+      isNull(agendamentos.mediumId),
+      gte(agendamentos.dataAgendada, hoje),
+      inArray(agendamentos.status, ['pendente', 'confirmado'])
+    ),
+    with: { cliente: true },
+    orderBy: [asc(agendamentos.dataAgendada), asc(agendamentos.horaInicio)],
+  })
 
-  return (data ?? []) as AgendamentoComCliente[]
+  return linhas.map(mapAgendamentoComCliente)
 }

@@ -1,7 +1,10 @@
 // Lista de consulentes com histórico de agendamentos
 export const dynamic = 'force-dynamic'
 
-import { createServerSessionClient } from '@/lib/supabase/server'
+import { asc, desc, ne } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { agendamentos, clientes } from '@/lib/db/schema'
+import { mapCliente } from '@/lib/db/mappers'
 import { ConsulentesManager } from './ConsulentesManager'
 import type { Cliente } from '@/types/database'
 
@@ -15,32 +18,31 @@ interface ClienteComContagem extends Cliente {
 }
 
 export default async function ConsulentesPage() {
-  const supabase = await createServerSessionClient()
-
-  const [{ data: clientes }, { data: agendamentos }] = await Promise.all([
-    supabase.from('clientes').select('*').order('nome'),
-    supabase
-      .from('agendamentos')
-      .select('cliente_id, data_agendada')
-      .not('status', 'eq', 'cancelado')
-      .order('data_agendada', { ascending: false }),
+  const [linhasClientes, linhasAgendamentos] = await Promise.all([
+    db.select().from(clientes).orderBy(asc(clientes.nome)),
+    db
+      .select({ clienteId: agendamentos.clienteId, dataAgendada: agendamentos.dataAgendada })
+      .from(agendamentos)
+      .where(ne(agendamentos.status, 'cancelado'))
+      .orderBy(desc(agendamentos.dataAgendada)),
   ])
 
   const agsPorCliente = new Map<string, { total: number; ultimo: string | null }>()
-  for (const ag of agendamentos ?? []) {
-    const entry = agsPorCliente.get(ag.cliente_id)
+  for (const ag of linhasAgendamentos) {
+    const entry = agsPorCliente.get(ag.clienteId)
     if (!entry) {
-      agsPorCliente.set(ag.cliente_id, { total: 1, ultimo: ag.data_agendada })
+      agsPorCliente.set(ag.clienteId, { total: 1, ultimo: ag.dataAgendada })
     } else {
       entry.total += 1
-      if (!entry.ultimo || ag.data_agendada > entry.ultimo) entry.ultimo = ag.data_agendada
+      if (!entry.ultimo || ag.dataAgendada > entry.ultimo) entry.ultimo = ag.dataAgendada
     }
   }
 
-  const clientesComDados: ClienteComContagem[] = (clientes ?? []).map((c: Cliente) => {
-    const info = agsPorCliente.get(c.id)
+  const clientesComDados: ClienteComContagem[] = linhasClientes.map((c) => {
+    const cliente = mapCliente(c)
+    const info = agsPorCliente.get(cliente.id)
     return {
-      ...c,
+      ...cliente,
       total_agendamentos: info?.total ?? 0,
       ultimo_agendamento: info?.ultimo ?? null,
     }
