@@ -1,14 +1,16 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { createServerSessionClient } from '@/lib/supabase/server'
+import { getAdminUser } from '@/lib/auth/admin'
 import { Logo } from '@/components/shared/Logo'
 import { AdminNav } from './AdminNav'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createServerSessionClient()
-  const { data: { session } } = await supabase.auth.getSession()
+  // getUser() (dentro de getAdminUser) revalida contra o Auth server e checa ADMIN_EMAILS —
+  // o middleware já faz essa checagem, isto é defesa em profundidade caso o layout seja
+  // alcançado por outro caminho.
+  const user = await getAdminUser()
 
-  if (!session) {
+  if (!user) {
     redirect('/auth/login')
   }
 

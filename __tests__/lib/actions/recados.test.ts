@@ -85,7 +85,7 @@ describe('criarRecado', () => {
     mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
     const fd = makeFormData({ titulo: 'Aviso', conteudo: 'Reunião cancelada' })
     const resultado = await criarRecado(null, fd)
-    expect(resultado).toEqual({ erro: 'Não autorizado' })
+    expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
 
   it('retorna erro de validação para título muito curto', async () => {
@@ -190,7 +190,7 @@ describe('editarRecado', () => {
     mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
     const fd = makeFormData({ titulo: 'Aviso', conteudo: 'Conteúdo' })
     const resultado = await editarRecado('rec-1', null, fd)
-    expect(resultado).toEqual({ erro: 'Não autorizado' })
+    expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
 
   it('edita recado com sucesso', async () => {
@@ -241,7 +241,7 @@ describe('excluirRecado', () => {
   it('retorna erro quando não autenticado', async () => {
     mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
     const resultado = await excluirRecado('rec-1')
-    expect(resultado).toEqual({ erro: 'Não autorizado' })
+    expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
 
   it('faz soft delete (ativo=false) com sucesso', async () => {
@@ -268,7 +268,7 @@ describe('toggleFixadoRecado', () => {
   it('retorna erro quando não autenticado', async () => {
     mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
     const resultado = await toggleFixadoRecado('rec-1', true)
-    expect(resultado).toEqual({ erro: 'Não autorizado' })
+    expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
 
   it('fixa recado com sucesso', async () => {
@@ -307,7 +307,7 @@ describe('verificarAdmin em recados — whitelist', () => {
     )
     const fd = makeFormData({ titulo: 'Aviso', conteudo: 'Texto' })
     const resultado = await criarRecado(null, fd)
-    expect(resultado).toEqual({ erro: 'Não autorizado' })
+    expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
 
   it('permite usuário dentro da whitelist', async () => {

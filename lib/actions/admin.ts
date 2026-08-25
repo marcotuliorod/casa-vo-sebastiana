@@ -4,29 +4,12 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { createAdminClient, createServerSessionClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
+import { verificarAdmin } from '@/lib/auth/admin'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
 import { mensagemAtribuicaoMedium, mensagemCancelamento } from '@/lib/whatsapp/templates'
 import { normalizarTelefone } from '@/lib/utils/phone'
 import type { AppointmentStatus } from '@/types/database'
-
-// Verifica se há um usuário autenticado e com email autorizado
-async function verificarAdmin(): Promise<string | null> {
-  const supabase = await createServerSessionClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return 'Não autorizado.'
-
-  const adminEmails = process.env.ADMIN_EMAILS
-    ?.split(',')
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean) ?? []
-
-  if (adminEmails.length > 0 && !adminEmails.includes((user.email ?? '').toLowerCase())) {
-    return 'Não autorizado.'
-  }
-
-  return null
-}
 
 // Atualizar status de um agendamento
 export async function atualizarStatusAgendamento(
