@@ -30,6 +30,9 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+# docker compose — override local para expor portas (ex: Postgres pro VS Code/GUI)
+docker-compose.override.yml
+
 # vercel
 .vercel
 
