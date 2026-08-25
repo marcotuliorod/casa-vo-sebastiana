@@ -10,6 +10,9 @@ export const metadata = {
   title: 'Agendar — Escolha a data | Casa de Vó Sebastiana',
 }
 
+// Disponibilidade muda a cada agendamento — nunca prerenderizar estaticamente
+export const dynamic = 'force-dynamic'
+
 export default async function AgendarPage() {
   // Gerar próximas 60 datas a partir de hoje no fuso de SP (RES-02)
   const hojeStr = formatInTimeZone(new Date(), 'America/Sao_Paulo', 'yyyy-MM-dd')

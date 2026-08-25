@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.github
+npm-debug.log*
+Dockerfile
+docker-compose.yml
+docker
+.env
+.env.*
+!.env.example
+__tests__
+coverage
+load-tests
+*.md
