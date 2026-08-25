@@ -1,21 +1,20 @@
 // Helpers compartilhados de autorização admin — usados tanto pelo
 // layout admin (gate de leitura) quanto pelas Server Actions (gate de mutação).
 
-import { createServerSessionClient } from '@/lib/supabase/server'
-import type { User } from '@supabase/supabase-js'
+import { auth } from '@/lib/auth/config'
 import { emailAutorizado } from './emails'
 
 export { emailAutorizado }
 
+type AdminUser = { id: string; email: string | null | undefined }
+
 // Retorna o usuário autenticado E autorizado (email na allowlist), ou null.
-export async function getAdminUser(): Promise<User | null> {
-  const supabase = await createServerSessionClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+export async function getAdminUser(): Promise<AdminUser | null> {
+  const session = await auth()
+  const user = session?.user
 
   if (!user || !emailAutorizado(user.email)) return null
-  return user
+  return { id: user.id ?? '', email: user.email }
 }
 
 // Usado pelas Server Actions: retorna mensagem de erro, ou null se autorizado.

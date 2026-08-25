@@ -1,21 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@/lib/supabase/server', () => ({
-  createServerSessionClient: vi.fn(),
+vi.mock('@/lib/auth/config', () => ({
+  auth: vi.fn(),
 }))
 
-import { createServerSessionClient } from '@/lib/supabase/server'
+import { auth } from '@/lib/auth/config'
 import { emailAutorizado } from '@/lib/auth/emails'
 import { getAdminUser, verificarAdmin } from '@/lib/auth/admin'
 
-const mockCreateServerSessionClient = createServerSessionClient as ReturnType<typeof vi.fn>
+const mockAuth = auth as ReturnType<typeof vi.fn>
 
-function mkSessionClient(user: { email: string; id: string } | null) {
-  return {
-    auth: {
-      getUser: vi.fn().mockResolvedValue({ data: { user } }),
-    },
-  }
+function mkSession(user: { email: string; id: string } | null) {
+  return user ? { user, expires: '2099-01-01T00:00:00.000Z' } : null
 }
 
 beforeEach(() => {
@@ -53,17 +49,15 @@ describe('emailAutorizado', () => {
 })
 
 describe('getAdminUser / verificarAdmin', () => {
-  it('retorna null quando não há usuário autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+  it('retorna null quando não há sessão', async () => {
+    mockAuth.mockResolvedValue(mkSession(null))
     expect(await getAdminUser()).toBeNull()
     expect(await verificarAdmin()).toBe('Não autorizado.')
   })
 
   it('retorna null quando o usuário autenticado não está na whitelist', async () => {
     process.env.ADMIN_EMAILS = 'admin@test.com'
-    mockCreateServerSessionClient.mockResolvedValue(
-      mkSessionClient({ email: 'intruso@test.com', id: 'uid-1' })
-    )
+    mockAuth.mockResolvedValue(mkSession({ email: 'intruso@test.com', id: 'uid-1' }))
     expect(await getAdminUser()).toBeNull()
     expect(await verificarAdmin()).toBe('Não autorizado.')
   })
@@ -71,15 +65,13 @@ describe('getAdminUser / verificarAdmin', () => {
   it('retorna o usuário quando autenticado e autorizado', async () => {
     process.env.ADMIN_EMAILS = 'admin@test.com'
     const user = { email: 'admin@test.com', id: 'uid-1' }
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(user))
+    mockAuth.mockResolvedValue(mkSession(user))
     expect(await getAdminUser()).toEqual(user)
     expect(await verificarAdmin()).toBeNull()
   })
 
   it('permite qualquer usuário autenticado quando ADMIN_EMAILS está vazio', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(
-      mkSessionClient({ email: 'ninguem-configurado@test.com', id: 'uid-2' })
-    )
+    mockAuth.mockResolvedValue(mkSession({ email: 'ninguem-configurado@test.com', id: 'uid-2' }))
     expect(await verificarAdmin()).toBeNull()
   })
 })

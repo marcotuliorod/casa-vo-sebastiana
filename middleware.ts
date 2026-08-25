@@ -1,45 +1,32 @@
-// Proteção de rotas: /admin/* requer autenticação Supabase
+// Proteção de rotas: /admin/* requer sessão Auth.js válida e email autorizado.
+//
+// Importa só a config edge-safe (lib/auth/config.edge.ts) — SEM adapter, para
+// não puxar o driver `postgres` (Node/TCP) para o bundle do Edge Runtime.
+// Sessão é JWT: o middleware só valida a assinatura do cookie. A allowlist é
+// checada de novo aqui (defesa em profundidade: cobre o caso de ADMIN_EMAILS
+// mudar depois do token já emitido).
 
-import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import NextAuth from 'next-auth'
+import { NextResponse } from 'next/server'
+import { authConfig } from '@/lib/auth/config.edge'
 import { emailAutorizado } from '@/lib/auth/emails'
 
-export async function middleware(request: NextRequest) {
-  const response = NextResponse.next({ request })
+const { auth } = NextAuth(authConfig)
 
-  // Só proteger rotas /admin
-  if (!request.nextUrl.pathname.startsWith('/admin')) {
-    return response
+export default auth((req) => {
+  if (!req.nextUrl.pathname.startsWith('/admin')) {
+    return NextResponse.next()
   }
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet: Array<{ name: string; value: string; options?: Record<string, unknown> }>) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            request.cookies.set(name, value)
-            response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2])
-          })
-        },
-      },
-    }
-  )
-
-  // getUser() revalida o token contra o servidor de Auth (getSession() só decodifica o cookie local)
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = req.auth?.user
 
   if (!user || !emailAutorizado(user.email)) {
-    const loginUrl = new URL('/auth/login', request.url)
+    const loginUrl = new URL('/auth/login', req.url)
     return NextResponse.redirect(loginUrl)
   }
 
-  return response
-}
+  return NextResponse.next()
+})
 
 export const config = {
   matcher: ['/admin/:path*'],

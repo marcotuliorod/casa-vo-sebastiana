@@ -13,7 +13,7 @@ import {
   MessageSquare,
   LogOut,
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
 const navItems = [
@@ -31,8 +31,7 @@ export function AdminNav() {
   const router = useRouter()
 
   const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    await signOut({ redirect: false })
     router.push('/auth/login')
   }
 

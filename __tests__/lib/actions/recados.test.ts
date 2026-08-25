@@ -5,10 +5,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/supabase/server', () => ({
   createAdminClient: vi.fn(),
-  createServerSessionClient: vi.fn(),
+}))
+vi.mock('@/lib/auth/config', () => ({
+  auth: vi.fn(),
 }))
 
-import { createAdminClient, createServerSessionClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
+import { auth } from '@/lib/auth/config'
 import {
   criarRecado,
   editarRecado,
@@ -17,7 +20,7 @@ import {
 } from '@/lib/actions/recados'
 
 const mockCreateAdminClient = createAdminClient as ReturnType<typeof vi.fn>
-const mockCreateServerSessionClient = createServerSessionClient as ReturnType<typeof vi.fn>
+const mockAuth = auth as ReturnType<typeof vi.fn>
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -54,11 +57,7 @@ function mkDbClient(tableResponses: Record<string, TableResp | TableResp[]>) {
 }
 
 function mkSessionClient(user: { email: string; id: string } | null) {
-  return {
-    auth: {
-      getUser: vi.fn().mockResolvedValue({ data: { user } }),
-    },
-  }
+  return user ? { user, expires: '2099-01-01T00:00:00.000Z' } : null
 }
 
 function makeFormData(fields: Record<string, string>): FormData {
@@ -72,7 +71,7 @@ beforeEach(() => {
   // Remover ADMIN_EMAILS para permitir qualquer usuário autenticado
   // (recados.ts não usa .filter(Boolean) então '' criaria [''] bloqueando tudo)
   delete process.env.ADMIN_EMAILS
-  mockCreateServerSessionClient.mockResolvedValue(
+  mockAuth.mockResolvedValue(
     mkSessionClient({ email: 'admin@test.com', id: 'uid-admin' })
   )
 })
@@ -82,7 +81,7 @@ beforeEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('criarRecado', () => {
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const fd = makeFormData({ titulo: 'Aviso', conteudo: 'Reunião cancelada' })
     const resultado = await criarRecado(null, fd)
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
@@ -187,7 +186,7 @@ describe('criarRecado', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('editarRecado', () => {
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const fd = makeFormData({ titulo: 'Aviso', conteudo: 'Conteúdo' })
     const resultado = await editarRecado('rec-1', null, fd)
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
@@ -239,7 +238,7 @@ describe('editarRecado', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('excluirRecado', () => {
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const resultado = await excluirRecado('rec-1')
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
@@ -266,7 +265,7 @@ describe('excluirRecado', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('toggleFixadoRecado', () => {
   it('retorna erro quando não autenticado', async () => {
-    mockCreateServerSessionClient.mockResolvedValue(mkSessionClient(null))
+    mockAuth.mockResolvedValue(mkSessionClient(null))
     const resultado = await toggleFixadoRecado('rec-1', true)
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
@@ -302,7 +301,7 @@ describe('toggleFixadoRecado', () => {
 describe('verificarAdmin em recados — whitelist', () => {
   it('bloqueia usuário fora da whitelist', async () => {
     process.env.ADMIN_EMAILS = 'super@admin.com'
-    mockCreateServerSessionClient.mockResolvedValue(
+    mockAuth.mockResolvedValue(
       mkSessionClient({ email: 'outro@user.com', id: 'uid-2' })
     )
     const fd = makeFormData({ titulo: 'Aviso', conteudo: 'Texto' })
@@ -312,7 +311,7 @@ describe('verificarAdmin em recados — whitelist', () => {
 
   it('permite usuário dentro da whitelist', async () => {
     process.env.ADMIN_EMAILS = 'admin@test.com'
-    mockCreateServerSessionClient.mockResolvedValue(
+    mockAuth.mockResolvedValue(
       mkSessionClient({ email: 'admin@test.com', id: 'uid-admin' })
     )
     mockCreateAdminClient.mockReturnValue(
