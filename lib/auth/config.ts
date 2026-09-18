@@ -9,6 +9,7 @@ import { db } from '@/lib/db'
 import { authUsers, authAccounts, authSessions, authVerificationTokens } from '@/lib/db/schema'
 import { authConfig } from './config.edge'
 import { emailAutorizado } from './emails'
+import { enviarLinkDeAcesso } from './link-email'
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -22,6 +23,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Resend({
       apiKey: process.env.RESEND_API_KEY,
       from: process.env.AUTH_EMAIL_FROM,
+      sendVerificationRequest: enviarLinkDeAcesso,
     }),
   ],
   callbacks: {
