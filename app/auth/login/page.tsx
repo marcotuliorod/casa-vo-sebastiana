@@ -20,7 +20,7 @@ export default function LoginPage() {
     setErro(null)
 
     startTransition(async () => {
-      const resultado = await signIn('resend', { email, redirect: false })
+      const resultado = await signIn('resend', { email, redirect: false, callbackUrl: '/admin' })
 
       if (resultado?.error) {
         setErro('Erro ao enviar o link. Verifique o email e tente novamente.')
