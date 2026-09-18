@@ -31,6 +31,20 @@ services:
       - internal
       - web
 
+  migrate:
+    profiles: ['tools']
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+
   proxy:
     image: caddy:2-alpine
     restart: unless-stopped

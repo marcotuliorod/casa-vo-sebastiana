@@ -108,8 +108,10 @@ NEXT_PUBLIC_BASE_URL=http://localhost:3000
 
 ```bash
 docker compose up -d --build
-docker compose exec app npx drizzle-kit migrate
+docker compose run --rm migrate
 ```
+
+> A imagem de produção do `app` não inclui o `drizzle-kit`; as migrations rodam no serviço `migrate` (perfil `tools`, não sobe com `docker compose up`).
 
 **Opção B — Postgres local avulso, para rodar `npm run dev` fora do Docker:**
 
@@ -123,6 +125,10 @@ DATABASE_URL=postgres://app:SUA_SENHA@localhost:5432/casa_vo_sebastiana npm run 
 Em ambas as opções, depois de migrar, popule a grade de horários padrão (terça a sábado):
 
 ```bash
+# Opção A (Docker Compose):
+docker compose exec -T postgres psql -U app -d casa_vo_sebastiana < drizzle/seed.sql
+
+# Opção B (Postgres avulso):
 psql "$DATABASE_URL" -f drizzle/seed.sql
 ```
 
@@ -501,22 +507,31 @@ Copie `.env.example` para `.env` no servidor e preencha os valores de produção
 git clone <repo> && cd casa-vo-sebastiana
 cp .env.example .env   # editar com os valores reais
 docker compose up -d --build
-docker compose exec app npx drizzle-kit migrate
+docker compose run --rm migrate
+docker compose exec -T postgres psql -U app -d casa_vo_sebastiana < drizzle/seed.sql   # grade padrão Ter–Sáb
 ```
 
+> Não copie o `docker-compose.override.yml` (ignorado pelo git) para o servidor: ele publica a porta 5432 do Postgres.
+
 O Caddy (serviço `proxy`) obtém certificado TLS automaticamente via Let's Encrypt para o `DOMAIN` configurado — só a porta 80/443 do proxy fica exposta; Postgres nunca é acessível de fora.
+
+**Host que já tem Traefik (ex.: VPS da Hostinger):** o Traefik já ocupa 80/443, então o Caddy não pode subir. Adicione ao `.env`:
+
+```bash
+COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml
+```
+
+Isso desativa o `proxy` e publica o `app` por labels do Traefik (`docker-compose.traefik.yml`, router `Host(${DOMAIN})`, certresolver `letsencrypt`). O registro DNS de `DOMAIN` precisa apontar para o servidor antes do primeiro acesso, para o certificado ser emitido.
 
 ### 4. Deploy de atualizações
 
 ```bash
-git pull && docker compose up -d --build
+git pull && docker compose up -d --build && docker compose run --rm migrate
 ```
-
-Migrations pendentes precisam ser aplicadas manualmente após o deploy: `docker compose exec app npx drizzle-kit migrate`.
 
 ### 5. Backups
 
-O container `backup` roda `pg_dump` diário com retenção de 14 dias, salvo no volume `backup_data`. Teste o restore periodicamente:
+O container `backup` roda `pg_dump` diário com retenção de 14 dias, salvo no volume `backup_data` — **na própria máquina**. Copie os dumps para fora do servidor (ex.: `rclone` em um cron do host, ou snapshot da VPS), senão uma falha do servidor leva o banco e os backups juntos. Teste o restore periodicamente:
 ```bash
 docker compose exec -T postgres pg_restore -U app -d casa_vo_sebastiana --clean < seu_backup.dump
 ```
