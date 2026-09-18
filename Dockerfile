@@ -5,6 +5,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+FROM deps AS migrator
+COPY drizzle.config.ts ./
+COPY drizzle ./drizzle
+COPY lib/db/schema.ts ./lib/db/schema.ts
+CMD ["npx", "drizzle-kit", "migrate"]
+
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules

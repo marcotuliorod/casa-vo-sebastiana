@@ -1,0 +1,15 @@
+# Uso: hosts que já têm um Traefik ocupando 80/443 (ex.: VPS da Hostinger).
+# Desativa o Caddy (`proxy`) e expõe o `app` via labels do Traefik existente.
+# Ative com COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml no .env.
+services:
+  proxy:
+    profiles: ['disabled']
+
+  app:
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME:-casa-vo-sebastiana}_web
+      - traefik.http.routers.casa-vo.entrypoints=websecure
+      - traefik.http.routers.casa-vo.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.casa-vo.tls.certresolver=letsencrypt
+      - traefik.http.services.casa-vo.loadbalancer.server.port=3000
