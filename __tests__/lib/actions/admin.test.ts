@@ -476,7 +476,14 @@ describe('criarEvento', () => {
     mockDb.insert.mockReturnValue(mkInsertChain())
     const fd = makeFormData(eventValido)
     const resultado = await criarEvento(null, fd)
-    expect(resultado).toBeNull()
+    expect(resultado).toEqual({ ok: true })
+  })
+
+  it('retorna um objeto novo a cada sucesso (necessário para o useFormState disparar efeitos)', async () => {
+    mockDb.insert.mockReturnValue(mkInsertChain())
+    const a = await criarEvento(null, makeFormData(eventValido))
+    const b = await criarEvento(a, makeFormData(eventValido))
+    expect(b).not.toBe(a)
   })
 
   it('retorna erro para título muito curto', async () => {
@@ -531,7 +538,43 @@ describe('editarEvento', () => {
     mockDb.update.mockReturnValue(mkUpdateChain())
     const fd = makeFormData(eventoValido)
     const resultado = await editarEvento('ev-1', null, fd)
-    expect(resultado).toBeNull()
+    expect(resultado).toEqual({ ok: true })
+  })
+
+  it('salva a descrição com quebras de linha normalizadas (\\r\\n vira \\n)', async () => {
+    const set = vi.fn(() => ({ where: vi.fn(() => Promise.resolve([])) }))
+    mockDb.update.mockReturnValue({ set })
+
+    const resultado = await editarEvento(
+      'ev-1',
+      null,
+      makeFormData({ ...eventoValido, descricao: '**Linha 1**\r\n\r\nLinha 2' })
+    )
+
+    expect(resultado).toEqual({ ok: true })
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ descricao: '**Linha 1**\n\nLinha 2' }))
+  })
+
+  it('\\r\\n não conta em dobro no limite de 1000 caracteres', async () => {
+    mockDb.update.mockReturnValue(mkUpdateChain())
+    // 250 linhas de "aaa": 1248 caracteres com \r\n, 999 depois de normalizar para \n
+    const descricao = Array.from({ length: 250 }, () => 'aaa').join('\r\n')
+    expect(descricao.length).toBeGreaterThan(1000)
+    expect(descricao.replace(/\r\n/g, '\n').length).toBeLessThanOrEqual(1000)
+
+    const resultado = await editarEvento('ev-1', null, makeFormData({ ...eventoValido, descricao }))
+    expect(resultado).toEqual({ ok: true })
+  })
+
+  it('rejeita descrição acima de 1000 caracteres e informa o campo', async () => {
+    const resultado = await editarEvento(
+      'ev-1',
+      null,
+      makeFormData({ ...eventoValido, descricao: 'a'.repeat(1001) })
+    )
+    expect(resultado?.campo).toBe('descricao')
+    expect(resultado?.erro).toBeTruthy()
+    expect(resultado?.ok).toBeUndefined()
   })
 
   it('retorna erro quando hora_fim igual a hora_inicio', async () => {

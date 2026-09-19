@@ -28,6 +28,9 @@ const ROTULOS_RECORRENCIA: Record<RecorrenciaTipo, string> = {
   mensal: 'Mensal',
 }
 
+// Campos cujo erro já aparece embaixo do próprio input; os demais caem no bloco de erro geral.
+const CAMPOS_COM_ERRO_INLINE = ['titulo', 'capacidade', 'hora_fim']
+
 function formatarData(data: string) {
   try {
     return format(parseISO(data), "dd/MM/yyyy", { locale: ptBR })
@@ -216,8 +219,11 @@ function FormEvento({
       </div>
 
       {/* Erro geral */}
-      {estado?.erro && !estado.campo && (
-        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+      {estado?.erro && !CAMPOS_COM_ERRO_INLINE.includes(estado.campo ?? '') && (
+        <p
+          role="alert"
+          className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2"
+        >
           {estado.erro}
         </p>
       )}
@@ -248,12 +254,16 @@ function LinhaEvento({ evento }: { evento: EventoComOcorrencias }) {
   const editarComId = editarEvento.bind(null, evento.id)
   const [estadoEditar, actionEditar] = useFormState(editarComId as (estado: EstadoFormEvento, formData: FormData) => Promise<EstadoFormEvento>, null)
 
+  const [salvo, setSalvo] = useState(false)
+
   useEffect(() => {
-    if (estadoEditar === null && editando) {
-      setEditando(false)
-      router.refresh()
-    }
-  }, [estadoEditar])
+    if (!estadoEditar?.ok) return
+    setEditando(false)
+    setSalvo(true)
+    router.refresh()
+    const timer = setTimeout(() => setSalvo(false), 4000)
+    return () => clearTimeout(timer)
+  }, [estadoEditar, router])
 
   const handleToggle = () => {
     startTransition(async () => {
@@ -318,6 +328,12 @@ function LinhaEvento({ evento }: { evento: EventoComOcorrencias }) {
 
             {evento.descricao && (
               <p className="mt-1 text-sm text-gray-400 truncate">{removerFormatacao(evento.descricao)}</p>
+            )}
+
+            {salvo && (
+              <p role="status" className="mt-1 text-xs font-medium text-green-600">
+                Alterações salvas.
+              </p>
             )}
           </div>
 
@@ -447,11 +463,10 @@ export function EventosManager({ eventos }: { eventos: EventoComOcorrencias[] })
   )
 
   useEffect(() => {
-    if (estadoCriar === null && mostrarFormCriacao) {
-      setMostrarFormCriacao(false)
-      router.refresh()
-    }
-  }, [estadoCriar])
+    if (!estadoCriar?.ok) return
+    setMostrarFormCriacao(false)
+    router.refresh()
+  }, [estadoCriar, router])
 
   return (
     <div className="space-y-4">
