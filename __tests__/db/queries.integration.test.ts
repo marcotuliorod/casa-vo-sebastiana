@@ -11,12 +11,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import postgres from 'postgres'
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import { inArray, like } from 'drizzle-orm'
+import { formatInTimeZone } from 'date-fns-tz'
 import * as schema from '@/lib/db/schema'
 import { listarAgendamentos } from '@/lib/queries/appointments'
 import { listarEventosAtivos } from '@/lib/queries/eventos'
 import { getMediumPorToken, getAgendamentosDoMedium } from '@/lib/queries/mediuns'
 
 const DATABASE_URL = process.env.DATABASE_URL
+
+// As queries comparam com a data de Brasília; usar UTC aqui quebra o teste entre 00:00 e 03:00 UTC.
+const dataBR = (offsetDias: number) =>
+  formatInTimeZone(new Date(Date.now() + offsetDias * 24 * 60 * 60 * 1000), 'America/Sao_Paulo', 'yyyy-MM-dd')
 
 // As queries testadas usam a instância singleton de lib/db, então este teste
 // também precisa dela apontar para o mesmo Postgres — garantido pelo mesmo
@@ -126,7 +131,7 @@ describe.skipIf(!DATABASE_URL)('queries — integração com Postgres real', () 
 
   it('listarEventosAtivos inclui evento recorrente com início no passado mas ocorrências futuras', async () => {
     // Início há 30 dias, recorrência semanal sem data de fim — tem ocorrências futuras
-    const inicioPassado = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const inicioPassado = dataBR(-30)
 
     await db.insert(schema.eventos).values({
       titulo: `${marcador}Gira Semanal`,
@@ -143,7 +148,7 @@ describe.skipIf(!DATABASE_URL)('queries — integração com Postgres real', () 
   })
 
   it('listarEventosAtivos NÃO inclui evento único cuja data já passou', async () => {
-    const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const ontem = dataBR(-1)
 
     await db.insert(schema.eventos).values({
       titulo: `${marcador}Evento Passado`,
@@ -170,7 +175,7 @@ describe.skipIf(!DATABASE_URL)('queries — integração com Postgres real', () 
       .values({ nome: `${marcador}Cliente Medium`, telefone: `${marcador}medium_cli` })
       .returning()
 
-    const dataFutura = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const dataFutura = dataBR(10)
     await db.insert(schema.agendamentos).values({
       clienteId: cliente.id,
       mediumId: medium.id,
