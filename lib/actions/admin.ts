@@ -324,11 +324,22 @@ export async function atribuirMedium(
 
 // ─── Eventos ──────────────────────────────────────────────────────────────────
 
-export type EstadoFormEvento = { erro?: string; campo?: string } | null
+// `ok: true` (objeto novo a cada envio) é o que faz o useFormState mudar de estado no sucesso;
+// devolver `null` de novo não dispara nenhum efeito no formulário.
+export type EstadoFormEvento = { erro?: string; campo?: string; ok?: boolean } | null
+
+// Navegadores enviam quebras de linha de <textarea> como \r\n, o que contaria em dobro no limite.
+function dadosDoFormEvento(formData: FormData) {
+  const dados = Object.fromEntries(formData.entries())
+  if (typeof dados.descricao === 'string') {
+    dados.descricao = dados.descricao.replace(/\r\n?/g, '\n')
+  }
+  return dados
+}
 
 const schemaEvento = z.object({
   titulo: z.string().min(3, 'Título deve ter pelo menos 3 caracteres'),
-  descricao: z.string().max(1000).optional().or(z.literal('')),
+  descricao: z.string().max(1000, 'A descrição deve ter no máximo 1000 caracteres.').optional().or(z.literal('')),
   data_inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
   hora_inicio: z.string().regex(/^\d{2}:\d{2}$/, 'Hora de início inválida'),
   hora_fim: z.string().regex(/^\d{2}:\d{2}$/, 'Hora de fim inválida'),
@@ -360,7 +371,7 @@ export async function criarEvento(
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const dados = Object.fromEntries(formData.entries())
+  const dados = dadosDoFormEvento(formData)
   const resultado = schemaEvento.safeParse(dados)
   if (!resultado.success) {
     const primeiro = resultado.error.errors[0]
@@ -394,7 +405,7 @@ export async function criarEvento(
 
   revalidatePath('/admin/eventos')
   revalidatePath('/agendar/eventos')
-  return null
+  return { ok: true }
 }
 
 export async function editarEvento(
@@ -405,7 +416,7 @@ export async function editarEvento(
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
-  const dados = Object.fromEntries(formData.entries())
+  const dados = dadosDoFormEvento(formData)
   const resultado = schemaEvento.safeParse(dados)
   if (!resultado.success) {
     const primeiro = resultado.error.errors[0]
@@ -442,7 +453,7 @@ export async function editarEvento(
 
   revalidatePath('/admin/eventos')
   revalidatePath('/agendar/eventos')
-  return null
+  return { ok: true }
 }
 
 export async function toggleEventoAtivo(
