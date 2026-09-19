@@ -1,6 +1,8 @@
 -- ============================================================
 -- Seed: Grade de horários padrão
--- Terça a Sábado, 09:00–17:00, slots de 30 minutos
+-- Terça a Sábado ativos; Domingo e Segunda inativos.
+-- 09:00–17:00, slots de 30 minutos. Idempotente: pode ser rodado de novo
+-- sem duplicar nem alterar horários já existentes.
 -- ============================================================
 
 INSERT INTO grade_horarios (dia_semana, hora_inicio, hora_fim) VALUES
@@ -30,4 +32,19 @@ INSERT INTO grade_horarios (dia_semana, hora_inicio, hora_fim) VALUES
 
 -- Sábado (6) — apenas manhã
 (6, '09:00', '09:30'), (6, '09:30', '10:00'), (6, '10:00', '10:30'),
-(6, '10:30', '11:00'), (6, '11:00', '11:30'), (6, '11:30', '12:00');
+(6, '10:30', '11:00'), (6, '11:00', '11:30'), (6, '11:30', '12:00')
+ON CONFLICT (dia_semana, hora_inicio) DO NOTHING;
+
+-- Domingo (0) e Segunda (1): já existem na grade do painel, porém INATIVOS
+-- (o admin reativa só os horários que quiser atender).
+INSERT INTO grade_horarios (dia_semana, hora_inicio, hora_fim, ativo) VALUES
+(0, '09:00', '09:30', false), (0, '09:30', '10:00', false), (0, '10:00', '10:30', false),
+(0, '10:30', '11:00', false), (0, '11:00', '11:30', false), (0, '11:30', '12:00', false),
+(0, '14:00', '14:30', false), (0, '14:30', '15:00', false), (0, '15:00', '15:30', false),
+(0, '15:30', '16:00', false), (0, '16:00', '16:30', false), (0, '16:30', '17:00', false),
+
+(1, '09:00', '09:30', false), (1, '09:30', '10:00', false), (1, '10:00', '10:30', false),
+(1, '10:30', '11:00', false), (1, '11:00', '11:30', false), (1, '11:30', '12:00', false),
+(1, '14:00', '14:30', false), (1, '14:30', '15:00', false), (1, '15:00', '15:30', false),
+(1, '15:30', '16:00', false), (1, '16:00', '16:30', false), (1, '16:30', '17:00', false)
+ON CONFLICT (dia_semana, hora_inicio) DO NOTHING;
