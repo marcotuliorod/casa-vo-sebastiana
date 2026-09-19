@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils/cn'
 import type { GradeHorario } from '@/types/database'
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-const DIAS_PADRAO = [2, 3, 4, 5, 6] // Ter a Sáb
+const DIAS_PADRAO = [0, 1, 2, 3, 4, 5, 6] // Dom a Sáb
 
 type Turno = 'todos' | 'manha' | 'tarde' | 'noite'
 

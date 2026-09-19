@@ -26,7 +26,7 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 
 ### Área Pública
 - **Fluxo de agendamento em 3 passos** (mobile-first):
-  1. Escolher data — calendário interativo (Ter–Sáb, até 60 dias)
+  1. Escolher data — calendário interativo (dias com horários ativos na grade, até 60 dias)
   2. Escolher horário — grid de slots de 30 min disponíveis
   3. Preencher dados — nome, telefone (WhatsApp), e-mail, observações
 - **Página do agendamento** acessível por link público via token (sem login)
@@ -122,7 +122,7 @@ docker run -d --name pg-dev -e POSTGRES_USER=app -e POSTGRES_PASSWORD=SUA_SENHA 
 DATABASE_URL=postgres://app:SUA_SENHA@localhost:5432/casa_vo_sebastiana npm run db:migrate
 ```
 
-Em ambas as opções, depois de migrar, popule a grade de horários padrão (terça a sábado):
+Em ambas as opções, depois de migrar, popule a grade de horários padrão (terça a sábado ativos; domingo e segunda criados inativos — o admin ativa os que quiser; o seed é idempotente):
 
 ```bash
 # Opção A (Docker Compose):
@@ -377,7 +377,7 @@ casa-vo-sebastiana/
 │
 ├── drizzle/
 │   ├── 0000_*.sql                    # Migration gerada + extensions/constraint/triggers manuais
-│   ├── seed.sql                      # Grade padrão Ter–Sáb
+│   ├── seed.sql                      # Grade padrão (Ter–Sáb ativos, Dom–Seg inativos)
 │   └── meta/                         # Journal do drizzle-kit
 │
 ├── docker/
@@ -508,7 +508,7 @@ git clone <repo> && cd casa-vo-sebastiana
 cp .env.example .env   # editar com os valores reais
 docker compose up -d --build
 docker compose run --rm migrate
-docker compose exec -T postgres psql -U app -d casa_vo_sebastiana < drizzle/seed.sql   # grade padrão Ter–Sáb
+docker compose exec -T postgres psql -U app -d casa_vo_sebastiana < drizzle/seed.sql   # grade padrão (idempotente)
 ```
 
 > Não copie o `docker-compose.override.yml` (ignorado pelo git) para o servidor: ele publica a porta 5432 do Postgres.
