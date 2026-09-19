@@ -8,9 +8,9 @@ export const dynamic = 'force-dynamic'
 export default function ConfirmarAcessoPage({
   searchParams,
 }: {
-  searchParams: { token?: string; email?: string; callbackUrl?: string }
+  searchParams: { token?: string; email?: string }
 }) {
-  const { token, email, callbackUrl } = searchParams
+  const { token, email } = searchParams
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-light via-background to-background flex items-center justify-center px-4">
@@ -25,7 +25,7 @@ export default function ConfirmarAcessoPage({
               <form method="GET" action="/api/auth/callback/resend" className="space-y-5 text-center">
                 <input type="hidden" name="token" value={token} />
                 <input type="hidden" name="email" value={email} />
-                {callbackUrl && <input type="hidden" name="callbackUrl" value={callbackUrl} />}
+                <input type="hidden" name="callbackUrl" value="/admin" />
 
                 <div>
                   <h2 className="text-xl font-serif font-semibold text-brand-dark">
