@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { CalendarRange } from 'lucide-react'
 import { getEvento, getOcorrenciasEvento } from '@/lib/queries/eventos'
+import { TextoFormatado } from '@/components/shared/TextoFormatado'
 import { EventoInscricaoForm } from './EventoInscricaoForm'
 
 interface PageProps {
@@ -33,7 +34,7 @@ export default async function EventoPage({ params }: PageProps) {
               {evento.titulo}
             </h2>
             {evento.descricao && (
-              <p className="text-sm text-gray-500 mt-1">{evento.descricao}</p>
+              <TextoFormatado texto={evento.descricao} className="text-sm text-gray-500 mt-2 leading-relaxed" />
             )}
           </div>
         </div>

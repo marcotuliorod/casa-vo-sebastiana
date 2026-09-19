@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CalendarRange, Plus, Trash2, X, ChevronDown, ChevronUp } from 'lucide-react'
 import type { OcorrenciaEvento, Evento, RecorrenciaTipo } from '@/types/database'
+import { removerFormatacao } from '@/lib/utils/texto-formatado'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -93,11 +94,15 @@ function FormEvento({
           <textarea
             id="descricao"
             name="descricao"
-            rows={2}
+            rows={8}
+            maxLength={1000}
             placeholder="Informações sobre o evento..."
             defaultValue={inicial?.descricao ?? ''}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-muted resize-none"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-muted resize-y"
           />
+          <p className="text-xs text-gray-400">
+            Use **negrito** e *itálico*. A tecla Enter cria uma nova linha (máx. 1000 caracteres).
+          </p>
         </div>
 
         {/* Data de início */}
@@ -312,7 +317,7 @@ function LinhaEvento({ evento }: { evento: EventoComOcorrencias }) {
             </div>
 
             {evento.descricao && (
-              <p className="mt-1 text-sm text-gray-400 truncate">{evento.descricao}</p>
+              <p className="mt-1 text-sm text-gray-400 truncate">{removerFormatacao(evento.descricao)}</p>
             )}
           </div>
 
