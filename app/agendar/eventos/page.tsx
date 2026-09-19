@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { CalendarRange, ChevronRight, Users } from 'lucide-react'
 import { listarEventosAtivos, getOcorrenciasEvento } from '@/lib/queries/eventos'
+import { removerFormatacao } from '@/lib/utils/texto-formatado'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -60,7 +61,7 @@ export default async function EventosPublicosPage() {
 
                     {evento.descricao && (
                       <p className="text-sm text-gray-500 mt-0.5 line-clamp-2">
-                        {evento.descricao}
+                        {removerFormatacao(evento.descricao)}
                       </p>
                     )}
 
