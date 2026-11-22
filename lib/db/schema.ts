@@ -38,18 +38,13 @@ export const appointmentStatusEnum = pgEnum('appointment_status', [
   'nao_compareceu',
 ])
 
-export const whatsappEventoEnum = pgEnum('whatsapp_evento', [
+export const emailEventoEnum = pgEnum('email_evento', [
   'confirmacao_agendamento',
   'lembrete_24h',
   'cancelamento',
 ])
 
-export const whatsappStatusEnum = pgEnum('whatsapp_status', [
-  'na_fila',
-  'enviado',
-  'entregue',
-  'falhou',
-])
+export const emailStatusEnum = pgEnum('email_status', ['enviado', 'falhou'])
 
 export const recorrenciaTipoEnum = pgEnum('recorrencia_tipo', [
   'nenhuma',
@@ -109,6 +104,7 @@ export const mediuns = pgTable('mediuns', {
   nome: text('nome').notNull(),
   especialidade: text('especialidade'),
   telefone: text('telefone'),
+  email: text('email'),
   tokenAcesso: text('token_acesso')
     .notNull()
     .unique('mediuns_token_acesso_unique')
@@ -202,37 +198,39 @@ export const agendamentosRelations = relations(agendamentos, ({ one }) => ({
   }),
 }))
 
-// ─── logs_whatsapp ───────────────────────────────────────────
+// ─── logs_email ──────────────────────────────────────────────
+// Histórico dos e-mails enviados ao consulente (avisos à Casa e aos médiuns não entram).
 
-export const logsWhatsapp = pgTable(
-  'logs_whatsapp',
+export const logsEmail = pgTable(
+  'logs_email',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     agendamentoId: uuid('agendamento_id')
       .notNull()
       .references(() => agendamentos.id, { onDelete: 'cascade' }),
-    evento: whatsappEventoEnum('evento').notNull(),
-    provedor: text('provedor').notNull(),
-    paraTelefone: text('para_telefone').notNull(),
-    mensagem: text('mensagem').notNull(),
+    evento: emailEventoEnum('evento').notNull(),
+    paraEmail: text('para_email').notNull(),
+    assunto: text('assunto').notNull(),
     idMensagemProvedor: text('id_mensagem_provedor'),
-    status: whatsappStatusEnum('status').notNull().default('na_fila'),
+    status: emailStatusEnum('status').notNull(),
     mensagemErro: text('mensagem_erro'),
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
-    atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('logs_whatsapp_agendamento_idx').on(t.agendamentoId)]
+  (t) => [index('logs_email_agendamento_idx').on(t.agendamentoId)]
 )
 
-// ─── whatsapp_queue ──────────────────────────────────────────
+// ─── email_queue ─────────────────────────────────────────────
+// E-mails que falharam, reenviados pelo cron (app/api/cron/lembretes).
 
-export const whatsappQueue = pgTable(
-  'whatsapp_queue',
+export const emailQueue = pgTable(
+  'email_queue',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     agendamentoId: uuid('agendamento_id').references(() => agendamentos.id, { onDelete: 'set null' }),
-    telefone: text('telefone').notNull(),
-    mensagem: text('mensagem').notNull(),
+    destinatarios: text('destinatarios').notNull(), // separados por vírgula
+    assunto: text('assunto').notNull(),
+    texto: text('texto').notNull(),
+    html: text('html').notNull(),
     tipo: text('tipo').notNull(),
     tentativas: integer('tentativas').notNull().default(0),
     maxTentativas: integer('max_tentativas').notNull().default(3),
@@ -241,9 +239,12 @@ export const whatsappQueue = pgTable(
     proximoRetry: timestamp('proximo_retry', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    index('whatsapp_queue_pendentes').on(t.status, t.proximoRetry).where(sql`${t.status} = 'pendente'`),
-    check('whatsapp_queue_tipo_check', sql`${t.tipo} IN ('confirmacao', 'lembrete_24h', 'cancelamento', 'admin')`),
-    check('whatsapp_queue_status_check', sql`${t.status} IN ('pendente', 'enviado', 'falhou')`),
+    index('email_queue_pendentes').on(t.status, t.proximoRetry).where(sql`${t.status} = 'pendente'`),
+    check(
+      'email_queue_tipo_check',
+      sql`${t.tipo} IN ('confirmacao', 'lembrete_24h', 'cancelamento', 'admin', 'medium')`
+    ),
+    check('email_queue_status_check', sql`${t.status} IN ('pendente', 'enviado', 'falhou')`),
   ]
 )
 

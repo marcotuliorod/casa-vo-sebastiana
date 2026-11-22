@@ -63,14 +63,14 @@ describe('BookingForm', () => {
       expect(screen.getByLabelText(/nome completo/i)).toBeInTheDocument()
     })
 
-    it('exibe campo WhatsApp', () => {
+    it('exibe campo Telefone', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/whatsapp/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/telefone/i)).toBeInTheDocument()
     })
 
-    it('exibe campo Email (opcional)', () => {
+    it('exibe campo E-mail', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/e-mail/i)).toBeInTheDocument()
     })
 
     it('exibe campo Observações (opcional)', () => {
@@ -83,9 +83,14 @@ describe('BookingForm', () => {
       expect(screen.getByRole('button', { name: /confirmar agendamento/i })).toBeInTheDocument()
     })
 
-    it('menciona confirmação via WhatsApp', () => {
+    it('menciona confirmação por e-mail', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByText(/confirmação via whatsapp/i)).toBeInTheDocument()
+      expect(screen.getByText(/confirmação por e-mail/i)).toBeInTheDocument()
+    })
+
+    it('não menciona WhatsApp', () => {
+      const { container } = render(<BookingForm {...DEFAULT_PROPS} />)
+      expect(container.textContent).not.toMatch(/whatsapp/i)
     })
   })
 
@@ -123,17 +128,17 @@ describe('BookingForm', () => {
 
     it('campo telefone é type="tel"', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/whatsapp/i)).toHaveAttribute('type', 'tel')
+      expect(screen.getByLabelText(/telefone/i)).toHaveAttribute('type', 'tel')
     })
 
     it('campo telefone tem maxLength=15 (máscara formatada)', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/whatsapp/i)).toHaveAttribute('maxLength', '15')
+      expect(screen.getByLabelText(/telefone/i)).toHaveAttribute('maxLength', '15')
     })
 
     it('campo email é type="email"', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/email/i)).toHaveAttribute('type', 'email')
+      expect(screen.getByLabelText(/e-mail/i)).toHaveAttribute('type', 'email')
     })
 
     it('campo observações tem maxLength=500', () => {
@@ -141,15 +146,15 @@ describe('BookingForm', () => {
       expect(screen.getByLabelText(/observações/i)).toHaveAttribute('maxLength', '500')
     })
 
-    it('nome e telefone são obrigatórios (required)', () => {
+    it('nome, telefone e e-mail são obrigatórios (required)', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
       expect(screen.getByLabelText(/nome completo/i)).toBeRequired()
-      expect(screen.getByLabelText(/whatsapp/i)).toBeRequired()
+      expect(screen.getByLabelText(/telefone/i)).toBeRequired()
+      expect(screen.getByLabelText(/e-mail/i)).toBeRequired()
     })
 
-    it('email e observações não são obrigatórios', () => {
+    it('observações não são obrigatórias', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/email/i)).not.toBeRequired()
       expect(screen.getByLabelText(/observações/i)).not.toBeRequired()
     })
   })
@@ -158,7 +163,7 @@ describe('BookingForm', () => {
   describe('Máscara de telefone (onInput)', () => {
     it('formata número de celular enquanto o usuário digita', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      const input = screen.getByLabelText(/whatsapp/i) as HTMLInputElement
+      const input = screen.getByLabelText(/telefone/i) as HTMLInputElement
 
       // Simula digitar 11 dígitos
       fireEvent.input(input, { target: { value: '11999999999' } })
@@ -167,7 +172,7 @@ describe('BookingForm', () => {
 
     it('formata parcialmente com 5 dígitos digitados', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      const input = screen.getByLabelText(/whatsapp/i) as HTMLInputElement
+      const input = screen.getByLabelText(/telefone/i) as HTMLInputElement
 
       fireEvent.input(input, { target: { value: '11999' } })
       expect(input.value).toBe('(11) 999')
@@ -210,7 +215,7 @@ describe('BookingForm', () => {
     it('exibe erro de campo telefone com borda vermelha', () => {
       mockEstado = { erro: 'Telefone inválido', campo: 'telefone' }
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/whatsapp/i)).toHaveClass('border-brand-error')
+      expect(screen.getByLabelText(/telefone/i)).toHaveClass('border-brand-error')
     })
 
     it('sem estado de erro, não exibe mensagens de erro', () => {

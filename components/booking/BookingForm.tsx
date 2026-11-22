@@ -127,8 +127,8 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
 
       <div className="space-y-1.5">
         <Label htmlFor="telefone">
-          WhatsApp *{' '}
-          <span className="font-normal text-gray-500 text-xs">(para confirmação)</span>
+          Telefone *{' '}
+          <span className="font-normal text-gray-500 text-xs">(celular com DDD)</span>
         </Label>
         <Input
           id="telefone"
@@ -153,18 +153,23 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
 
       <div className="space-y-1.5">
         <Label htmlFor="email">
-          Email{' '}
-          <span className="font-normal text-gray-500 text-xs">(opcional)</span>
+          E-mail *{' '}
+          <span className="font-normal text-gray-500 text-xs">(para confirmação)</span>
         </Label>
         <Input
           id="email"
           name="email"
           type="email"
           placeholder="seu@email.com"
+          required
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          className={cn(estado?.campo === 'email' && 'border-brand-error')}
         />
+        {estado?.campo === 'email' && (
+          <p className="text-xs text-brand-error">{estado.erro}</p>
+        )}
       </div>
 
       <div className="space-y-1.5">
@@ -194,7 +199,7 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
       <SubmitButton />
 
       <p className="text-center text-xs text-gray-400">
-        Você receberá uma confirmação via WhatsApp
+        Você receberá a confirmação por e-mail
       </p>
     </FormSemReset>
   )

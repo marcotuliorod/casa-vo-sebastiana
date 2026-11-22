@@ -24,6 +24,7 @@ export function mapMedium(m: typeof mediuns.$inferSelect): Medium {
     nome: m.nome,
     especialidade: m.especialidade,
     telefone: m.telefone,
+    email: m.email,
     token_acesso: m.tokenAcesso,
     ativo: m.ativo,
     criado_em: m.criadoEm.toISOString(),

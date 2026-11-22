@@ -56,8 +56,8 @@ export default function CancelarPage({ params }: Props) {
                   Cancelar agendamento?
                 </h2>
                 <p className="text-sm text-gray-500">
-                  Esta ação não pode ser desfeita. Você receberá uma mensagem de
-                  confirmação no WhatsApp.
+                  Esta ação não pode ser desfeita. Você receberá a confirmação
+                  do cancelamento por e-mail.
                 </p>
 
                 {erro && (

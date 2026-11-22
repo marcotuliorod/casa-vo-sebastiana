@@ -17,21 +17,27 @@ vi.mock('@/lib/queries/eventos', () => ({
   getEvento: vi.fn(),
   contarInscritosOcorrencia: vi.fn(),
 }))
-vi.mock('@/lib/whatsapp/factory', () => ({
-  getProvedorWhatsApp: vi.fn(),
+// Só o envio é falso; listaDeEmails e afins são os reais
+vi.mock('@/lib/email/cliente', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/email/cliente')>()),
+  enviarEmail: vi.fn(),
 }))
-vi.mock('@/lib/whatsapp/templates', () => ({
-  mensagemConfirmacao: vi.fn(() => 'msg-confirmacao'),
-  mensagemCancelamento: vi.fn(() => 'msg-cancelamento'),
-  mensagemNovoAgendamentoAdmin: vi.fn(() => 'msg-novo-admin'),
-  mensagemCancelamentoAdmin: vi.fn(() => 'msg-cancelamento-admin'),
-  mensagemConfirmacaoEvento: vi.fn(() => 'msg-confirmacao-evento'),
-}))
+vi.mock('@/lib/email/templates', () => {
+  const mk = (nome: string) =>
+    vi.fn(() => ({ assunto: `assunto-${nome}`, texto: `texto-${nome}`, html: `html-${nome}` }))
+  return {
+    emailConfirmacao: mk('confirmacao'),
+    emailCancelamento: mk('cancelamento'),
+    emailNovoAgendamentoAdmin: mk('novo-admin'),
+    emailCancelamentoAdmin: mk('cancelamento-admin'),
+    emailConfirmacaoEvento: mk('confirmacao-evento'),
+  }
+})
 
 import { db } from '@/lib/db'
-import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
-import { mensagemNovoAgendamentoAdmin, mensagemCancelamentoAdmin } from '@/lib/whatsapp/templates'
-import { clientes, logsWhatsapp, whatsappQueue } from '@/lib/db/schema'
+import { enviarEmail } from '@/lib/email/cliente'
+import { emailNovoAgendamentoAdmin, emailCancelamentoAdmin } from '@/lib/email/templates'
+import { clientes, emailQueue, logsEmail } from '@/lib/db/schema'
 import { getSlotsDisponiveis } from '@/lib/queries/availability'
 import { getEvento, contarInscritosOcorrencia } from '@/lib/queries/eventos'
 import type { Evento } from '@/types/database'
@@ -43,9 +49,12 @@ type MockDb = {
   query: { agendamentos: { findFirst: ReturnType<typeof vi.fn> } }
 }
 const mockDb = db as unknown as MockDb
-const mockGetProvedorWhatsApp = getProvedorWhatsApp as ReturnType<typeof vi.fn>
+const mockEnviarEmail = vi.mocked(enviarEmail)
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const EMAIL_CONSULENTE = 'maria@exemplo.com'
+const ADMINS = ['casa@exemplo.com', 'mae@exemplo.com']
 
 /** db.update(t).set(v).where(cond) */
 function mkUpdateChain(erro?: Error) {
@@ -73,30 +82,53 @@ function capturarInserts() {
   return inseridos
 }
 
+type Falha = 'lanca' | 'sucesso_false'
+
+/** enviarEmail falso: dá certo, a não ser para quem estiver em `falhas` */
+function mkEnvio(falhas: { consulente?: Falha; admin?: Falha } = {}) {
+  mockEnviarEmail.mockImplementation(async (para: string[]) => {
+    const quem = para.includes(ADMINS[0]) ? 'admin' : 'consulente'
+    const falha = falhas[quem]
+    if (falha === 'lanca') throw new Error(`timeout ${quem}`)
+    if (falha === 'sucesso_false') return { sucesso: false, erro: `recusado ${quem}` }
+    return { sucesso: true, idMensagem: `id-${quem}` }
+  })
+}
+
+/** E-mail não configurado: enviarEmail lança para todos */
+function emailIndisponivel() {
+  mockEnviarEmail.mockRejectedValue(new Error('E-mail: configure RESEND_API_KEY e EMAIL_FROM no .env'))
+}
+
+function enviosPara(quem: 'admin' | 'consulente') {
+  return mockEnviarEmail.mock.calls.filter(([para]) => para.includes(ADMINS[0]) === (quem === 'admin'))
+}
+
+function itemFila(nome: string, extra: { agendamentoId: string | null; destinatarios: string; tipo: string }) {
+  return { ...extra, assunto: `assunto-${nome}`, texto: `texto-${nome}`, html: `html-${nome}` }
+}
+
 const agendamentoAtivo = {
   id: 'ag-1',
   status: 'confirmado',
   dataAgendada: '2025-04-01',
-  horaInicio: '09:00',
-  horaFim: '10:00',
+  horaInicio: '09:00:00',
+  horaFim: '10:00:00',
   tokenPublico: 'tok-abc',
-  cliente: { nome: 'Maria', telefone: '+5511999999999' },
+  cliente: { nome: 'Maria', telefone: '+5511999999999', email: EMAIL_CONSULENTE },
 }
 
-const itemFilaEsperado = {
-  agendamentoId: 'ag-1',
-  telefone: '+5511999999999',
-  mensagem: 'msg-cancelamento',
-  tipo: 'cancelamento',
-}
-
-function formAgendamento() {
+function formAgendamento(campos: Record<string, string> = {}) {
   const fd = new FormData()
-  fd.set('data', '2025-04-01')
-  fd.set('hora_inicio', '09:00')
-  fd.set('hora_fim', '10:00')
-  fd.set('nome', 'Maria Silva')
-  fd.set('telefone', '11999999999')
+  const padrao = {
+    data: '2025-04-01',
+    hora_inicio: '09:00',
+    hora_fim: '10:00',
+    nome: 'Maria Silva',
+    telefone: '11999999999',
+    email: EMAIL_CONSULENTE,
+  }
+  Object.entries({ ...padrao, ...campos }).forEach(([k, v]) => fd.set(k, v))
   return fd
 }
 
@@ -117,191 +149,201 @@ const evento: Evento = {
   atualizado_em: '2025-01-01T00:00:00Z',
 }
 
-function formInscricao() {
+function formInscricao(campos: Record<string, string> = {}) {
   const fd = new FormData()
-  fd.set('evento_id', EVENTO_ID)
-  fd.set('data', '2025-04-05')
-  fd.set('nome', 'Maria Silva')
-  fd.set('telefone', '11999999999')
+  const padrao = {
+    evento_id: EVENTO_ID,
+    data: '2025-04-05',
+    nome: 'Maria Silva',
+    telefone: '11999999999',
+    email: EMAIL_CONSULENTE,
+  }
+  Object.entries({ ...padrao, ...campos }).forEach(([k, v]) => fd.set(k, v))
   return fd
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  delete process.env.ADMIN_WHATSAPP
+  delete process.env.ADMIN_EMAIL_NOTIFICACOES
+  delete process.env.MAX_AGENDAMENTOS_MES
   vi.spyOn(console, 'error').mockImplementation(() => {})
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
   mockDb.update.mockReturnValue(mkUpdateChain())
   mockDb.query.agendamentos.findFirst.mockResolvedValue(agendamentoAtivo)
+  // ehOcorrenciaValida (real) só aceita datas de hoje em diante: fixa "hoje" em 01/04/2025.
+  // Só o Date é falsificado para não travar as promises.
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2025-04-01T08:00:00-03:00'))
+  vi.mocked(getSlotsDisponiveis).mockResolvedValue({
+    slots: [{ hora_inicio: '09:00', hora_fim: '10:00' }],
+  } as unknown as Awaited<ReturnType<typeof getSlotsDisponiveis>>)
+  vi.mocked(getEvento).mockResolvedValue(evento)
+  vi.mocked(contarInscritosOcorrencia).mockResolvedValue(0)
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.mocked(console.error).mockRestore()
+  vi.mocked(console.warn).mockRestore()
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
 // cancelarAgendamento (consulente, pelo token público)
 // ─────────────────────────────────────────────────────────────────────────────
-describe('cancelarAgendamento — WhatsApp', () => {
-  it('enfileira quando getProvedorWhatsApp lança (credenciais ausentes)', async () => {
+describe('cancelarAgendamento — e-mail', () => {
+  const itemFilaEsperado = itemFila('cancelamento', {
+    agendamentoId: 'ag-1',
+    destinatarios: EMAIL_CONSULENTE,
+    tipo: 'cancelamento',
+  })
+
+  it('enfileira quando o e-mail não está configurado', async () => {
     const inseridos = capturarInserts()
-    mockGetProvedorWhatsApp.mockImplementation(() => {
-      throw new Error('Z-API: configure ZAPI_INSTANCE_ID')
-    })
+    emailIndisponivel()
 
     const resultado = await cancelarAgendamento('tok-abc')
 
     expect(resultado).toEqual({})
-    expect(inseridos.get(whatsappQueue)).toEqual([itemFilaEsperado])
+    expect(inseridos.get(emailQueue)).toEqual([itemFilaEsperado])
+    expect(inseridos.has(logsEmail)).toBe(false)
     expect(console.error).toHaveBeenCalled()
   })
 
-  it('enfileira quando enviarMensagem lança exceção', async () => {
+  it('grava log "falhou" e enfileira quando o Resend recusa', async () => {
     const inseridos = capturarInserts()
-    mockGetProvedorWhatsApp.mockReturnValue({
-      nome: 'zapi',
-      enviarMensagem: vi.fn().mockRejectedValue(new Error('timeout')),
-    })
+    mkEnvio({ consulente: 'sucesso_false' })
 
     const resultado = await cancelarAgendamento('tok-abc')
 
     expect(resultado).toEqual({})
-    expect(inseridos.get(whatsappQueue)).toEqual([itemFilaEsperado])
-  })
-
-  it('grava log "falhou" e enfileira quando o envio retorna sucesso:false', async () => {
-    const inseridos = capturarInserts()
-    mockGetProvedorWhatsApp.mockReturnValue({
-      nome: 'zapi',
-      enviarMensagem: vi.fn().mockResolvedValue({ sucesso: false, erro: 'número inválido' }),
-    })
-
-    const resultado = await cancelarAgendamento('tok-abc')
-
-    expect(resultado).toEqual({})
-    expect(inseridos.get(logsWhatsapp)).toEqual([
+    expect(inseridos.get(logsEmail)).toEqual([
       expect.objectContaining({
         agendamentoId: 'ag-1',
         evento: 'cancelamento',
-        provedor: 'zapi',
+        paraEmail: EMAIL_CONSULENTE,
+        assunto: 'assunto-cancelamento',
         status: 'falhou',
-        mensagemErro: 'número inválido',
+        mensagemErro: 'recusado consulente',
       }),
     ])
-    expect(inseridos.get(whatsappQueue)).toEqual([itemFilaEsperado])
+    expect(inseridos.get(emailQueue)).toEqual([itemFilaEsperado])
   })
 
-  it('não cancela de novo nem envia WhatsApp se já estava cancelado', async () => {
+  it('grava log "enviado" e não enfileira quando o envio dá certo', async () => {
+    const inseridos = capturarInserts()
+    mkEnvio()
+
+    const resultado = await cancelarAgendamento('tok-abc')
+
+    expect(resultado).toEqual({})
+    expect(mockEnviarEmail).toHaveBeenCalledWith(
+      [EMAIL_CONSULENTE],
+      expect.objectContaining({ assunto: 'assunto-cancelamento' })
+    )
+    expect(inseridos.get(logsEmail)).toEqual([
+      expect.objectContaining({ status: 'enviado', idMensagemProvedor: 'id-consulente' }),
+    ])
+    expect(inseridos.has(emailQueue)).toBe(false)
+  })
+
+  it('consulente sem e-mail (cadastro antigo): cancela sem enviar nem enfileirar', async () => {
+    const inseridos = capturarInserts()
+    mkEnvio()
+    mockDb.query.agendamentos.findFirst.mockResolvedValue({
+      ...agendamentoAtivo,
+      cliente: { ...agendamentoAtivo.cliente, email: null },
+    })
+
+    const resultado = await cancelarAgendamento('tok-abc')
+
+    expect(resultado).toEqual({})
+    expect(mockEnviarEmail).not.toHaveBeenCalled()
+    expect(inseridos.has(emailQueue)).toBe(false)
+  })
+
+  it('não cancela de novo nem envia e-mail se já estava cancelado', async () => {
     mockDb.query.agendamentos.findFirst.mockResolvedValue({ ...agendamentoAtivo, status: 'cancelado' })
 
     const resultado = await cancelarAgendamento('tok-abc')
 
     expect(resultado).toEqual({ erro: 'Este agendamento já foi cancelado.' })
-    expect(mockGetProvedorWhatsApp).not.toHaveBeenCalled()
+    expect(mockEnviarEmail).not.toHaveBeenCalled()
     expect(mockDb.insert).not.toHaveBeenCalled()
-  })
-
-  it('grava log "enviado" e não enfileira quando o envio dá certo', async () => {
-    const inseridos = capturarInserts()
-    mockGetProvedorWhatsApp.mockReturnValue({
-      nome: 'zapi',
-      enviarMensagem: vi.fn().mockResolvedValue({ sucesso: true, idMensagemProvedor: 'm-1' }),
-    })
-
-    const resultado = await cancelarAgendamento('tok-abc')
-
-    expect(resultado).toEqual({})
-    expect(inseridos.get(logsWhatsapp)).toEqual([
-      expect.objectContaining({ status: 'enviado', idMensagemProvedor: 'm-1' }),
-    ])
-    expect(inseridos.has(whatsappQueue)).toBe(false)
   })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// criarAgendamento — confirmação via WhatsApp
+// criarAgendamento — e-mail obrigatório e confirmação
 // ─────────────────────────────────────────────────────────────────────────────
-describe('criarAgendamento — WhatsApp', () => {
-  beforeEach(() => {
-    delete process.env.MAX_AGENDAMENTOS_MES
-    vi.mocked(getSlotsDisponiveis).mockResolvedValue({
-      slots: [{ hora_inicio: '09:00', hora_fim: '10:00' }],
-    } as unknown as Awaited<ReturnType<typeof getSlotsDisponiveis>>)
+describe('criarAgendamento — e-mail', () => {
+  it('exige e-mail', async () => {
+    const resultado = await criarAgendamento(null, formAgendamento({ email: '' }))
+
+    expect(resultado).toEqual({ erro: 'Informe seu e-mail', campo: 'email' })
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 
-  it('enfileira a confirmação quando getProvedorWhatsApp lança (credenciais ausentes)', async () => {
+  it('rejeita e-mail inválido', async () => {
+    const resultado = await criarAgendamento(null, formAgendamento({ email: 'maria@' }))
+
+    expect(resultado).toEqual({ erro: 'E-mail inválido', campo: 'email' })
+  })
+
+  it('normaliza o e-mail (espaços e maiúsculas) ao salvar e ao enviar', async () => {
     const inseridos = capturarInserts()
-    mockGetProvedorWhatsApp.mockImplementation(() => {
-      throw new Error('Z-API: configure ZAPI_INSTANCE_ID')
-    })
+    mkEnvio()
+
+    await criarAgendamento(null, formAgendamento({ email: '  Maria@Exemplo.COM ' }))
+
+    expect(inseridos.get(clientes)).toEqual([expect.objectContaining({ email: EMAIL_CONSULENTE })])
+    expect(mockEnviarEmail).toHaveBeenCalledWith([EMAIL_CONSULENTE], expect.anything())
+  })
+
+  it('enfileira a confirmação quando o e-mail não está configurado', async () => {
+    const inseridos = capturarInserts()
+    emailIndisponivel()
 
     await criarAgendamento(null, formAgendamento())
 
-    expect(inseridos.get(whatsappQueue)).toEqual([
-      {
-        agendamentoId: 'ag-1',
-        telefone: '+5511999999999',
-        mensagem: 'msg-confirmacao',
-        tipo: 'confirmacao',
-      },
+    expect(inseridos.get(emailQueue)).toEqual([
+      itemFila('confirmacao', { agendamentoId: 'ag-1', destinatarios: EMAIL_CONSULENTE, tipo: 'confirmacao' }),
     ])
   })
 
-  it('grava log "falhou" e enfileira quando o envio retorna sucesso:false', async () => {
+  it('grava log "falhou" e enfileira quando o Resend recusa', async () => {
     const inseridos = capturarInserts()
-    mockGetProvedorWhatsApp.mockReturnValue({
-      nome: 'zapi',
-      enviarMensagem: vi.fn().mockResolvedValue({ sucesso: false, erro: 'número inválido' }),
-    })
+    mkEnvio({ consulente: 'sucesso_false' })
 
     await criarAgendamento(null, formAgendamento())
 
-    expect(inseridos.get(logsWhatsapp)).toEqual([
+    expect(inseridos.get(logsEmail)).toEqual([
       expect.objectContaining({ evento: 'confirmacao_agendamento', status: 'falhou' }),
     ])
-    expect(inseridos.get(whatsappQueue)).toEqual([
+    expect(inseridos.get(emailQueue)).toEqual([
       expect.objectContaining({ agendamentoId: 'ag-1', tipo: 'confirmacao' }),
     ])
   })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// inscreverEmEvento — confirmação via WhatsApp
+// inscreverEmEvento — validação da data e confirmação por e-mail
 // ─────────────────────────────────────────────────────────────────────────────
-describe('inscreverEmEvento — WhatsApp', () => {
-  beforeEach(() => {
-    // ehOcorrenciaValida (real) só aceita datas de hoje em diante: fixa "hoje" em 01/04/2025.
-    // Só o Date é falsificado para não travar as promises.
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date('2025-04-01T12:00:00-03:00'))
-    vi.mocked(getEvento).mockResolvedValue(evento)
-    vi.mocked(contarInscritosOcorrencia).mockResolvedValue(0)
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
+describe('inscreverEmEvento', () => {
   describe('validação da data da ocorrência', () => {
-    function formComData(data: string) {
-      const fd = formInscricao()
-      fd.set('data', data)
-      return fd
-    }
-
     it('rejeita data que não é ocorrência do evento (evento único em outro dia)', async () => {
-      const resultado = await inscreverEmEvento(null, formComData('2025-04-06'))
+      const resultado = await inscreverEmEvento(null, formInscricao({ data: '2025-04-06' }))
 
       expect(resultado).toEqual({ erro: 'Data inválida para este evento.' })
       expect(contarInscritosOcorrencia).not.toHaveBeenCalled()
       expect(mockDb.insert).not.toHaveBeenCalled()
-      expect(mockGetProvedorWhatsApp).not.toHaveBeenCalled()
+      expect(mockEnviarEmail).not.toHaveBeenCalled()
     })
 
     it('rejeita data que não bate com a recorrência semanal', async () => {
       vi.mocked(getEvento).mockResolvedValue({ ...evento, recorrencia: 'semanal' })
 
       // 05/04 é a primeira ocorrência; 09/04 fica no meio da semana
-      const resultado = await inscreverEmEvento(null, formComData('2025-04-09'))
+      const resultado = await inscreverEmEvento(null, formInscricao({ data: '2025-04-09' }))
 
       expect(resultado).toEqual({ erro: 'Data inválida para este evento.' })
       expect(mockDb.insert).not.toHaveBeenCalled()
@@ -311,7 +353,7 @@ describe('inscreverEmEvento — WhatsApp', () => {
       vi.mocked(getEvento).mockResolvedValue({ ...evento, data_inicio: '2025-03-29', recorrencia: 'semanal' })
 
       // 29/03 é ocorrência semanal, mas é anterior a "hoje" (01/04)
-      const resultado = await inscreverEmEvento(null, formComData('2025-03-29'))
+      const resultado = await inscreverEmEvento(null, formInscricao({ data: '2025-03-29' }))
 
       expect(resultado).toEqual({ erro: 'Data inválida para este evento.' })
       expect(mockDb.insert).not.toHaveBeenCalled()
@@ -324,7 +366,7 @@ describe('inscreverEmEvento — WhatsApp', () => {
         data_fim_recorrencia: '2025-04-12',
       })
 
-      const resultado = await inscreverEmEvento(null, formComData('2025-04-19'))
+      const resultado = await inscreverEmEvento(null, formInscricao({ data: '2025-04-19' }))
 
       expect(resultado).toEqual({ erro: 'Data inválida para este evento.' })
       expect(mockDb.insert).not.toHaveBeenCalled()
@@ -332,13 +374,10 @@ describe('inscreverEmEvento — WhatsApp', () => {
 
     it('aceita ocorrência semanal futura e segue para a inscrição', async () => {
       capturarInserts()
-      mockGetProvedorWhatsApp.mockReturnValue({
-        nome: 'zapi',
-        enviarMensagem: vi.fn().mockResolvedValue({ sucesso: true }),
-      })
+      mkEnvio()
       vi.mocked(getEvento).mockResolvedValue({ ...evento, recorrencia: 'semanal' })
 
-      const resultado = await inscreverEmEvento(null, formComData('2025-04-12'))
+      const resultado = await inscreverEmEvento(null, formInscricao({ data: '2025-04-12' }))
 
       expect(resultado).toBeUndefined() // sucesso redireciona (redirect mockado)
       expect(contarInscritosOcorrencia).toHaveBeenCalledWith(EVENTO_ID, '2025-04-12')
@@ -346,114 +385,73 @@ describe('inscreverEmEvento — WhatsApp', () => {
     })
   })
 
-  it('enfileira a confirmação quando getProvedorWhatsApp lança (credenciais ausentes)', async () => {
-    const inseridos = capturarInserts()
-    mockGetProvedorWhatsApp.mockImplementation(() => {
-      throw new Error('Z-API: configure ZAPI_INSTANCE_ID')
+  describe('confirmação por e-mail', () => {
+    it('exige e-mail', async () => {
+      const resultado = await inscreverEmEvento(null, formInscricao({ email: '' }))
+
+      expect(resultado).toEqual({ erro: 'Informe seu e-mail', campo: 'email' })
+      expect(mockDb.insert).not.toHaveBeenCalled()
     })
 
-    await inscreverEmEvento(null, formInscricao())
+    it('enfileira a confirmação quando o e-mail não está configurado', async () => {
+      const inseridos = capturarInserts()
+      emailIndisponivel()
 
-    expect(inseridos.get(whatsappQueue)).toEqual([
-      {
-        agendamentoId: 'ag-1',
-        telefone: '+5511999999999',
-        mensagem: 'msg-confirmacao-evento',
-        tipo: 'confirmacao',
-      },
-    ])
-    expect(console.error).toHaveBeenCalled()
-  })
+      await inscreverEmEvento(null, formInscricao())
 
-  it('grava log "falhou" e enfileira quando o envio retorna sucesso:false', async () => {
-    const inseridos = capturarInserts()
-    mockGetProvedorWhatsApp.mockReturnValue({
-      nome: 'zapi',
-      enviarMensagem: vi.fn().mockResolvedValue({ sucesso: false, erro: 'número inválido' }),
+      expect(inseridos.get(emailQueue)).toEqual([
+        itemFila('confirmacao-evento', {
+          agendamentoId: 'ag-1',
+          destinatarios: EMAIL_CONSULENTE,
+          tipo: 'confirmacao',
+        }),
+      ])
     })
 
-    await inscreverEmEvento(null, formInscricao())
+    it('grava log "falhou" e enfileira quando o Resend recusa', async () => {
+      const inseridos = capturarInserts()
+      mkEnvio({ consulente: 'sucesso_false' })
 
-    expect(inseridos.get(logsWhatsapp)).toEqual([
-      expect.objectContaining({
-        agendamentoId: 'ag-1',
-        evento: 'confirmacao_agendamento',
-        status: 'falhou',
-        mensagemErro: 'número inválido',
-      }),
-    ])
-    expect(inseridos.get(whatsappQueue)).toEqual([
-      expect.objectContaining({ agendamentoId: 'ag-1', mensagem: 'msg-confirmacao-evento', tipo: 'confirmacao' }),
-    ])
-  })
+      await inscreverEmEvento(null, formInscricao())
 
-  it('grava log "enviado" e não enfileira quando o envio dá certo', async () => {
-    const inseridos = capturarInserts()
-    mockGetProvedorWhatsApp.mockReturnValue({
-      nome: 'zapi',
-      enviarMensagem: vi.fn().mockResolvedValue({ sucesso: true, idMensagemProvedor: 'm-1' }),
+      expect(inseridos.get(logsEmail)).toEqual([
+        expect.objectContaining({ agendamentoId: 'ag-1', evento: 'confirmacao_agendamento', status: 'falhou' }),
+      ])
+      expect(inseridos.get(emailQueue)).toEqual([
+        expect.objectContaining({ agendamentoId: 'ag-1', assunto: 'assunto-confirmacao-evento', tipo: 'confirmacao' }),
+      ])
     })
 
-    await inscreverEmEvento(null, formInscricao())
+    it('grava log "enviado" e não enfileira quando o envio dá certo', async () => {
+      const inseridos = capturarInserts()
+      mkEnvio()
 
-    expect(inseridos.get(logsWhatsapp)).toEqual([
-      expect.objectContaining({ status: 'enviado', idMensagemProvedor: 'm-1' }),
-    ])
-    expect(inseridos.has(whatsappQueue)).toBe(false)
+      await inscreverEmEvento(null, formInscricao())
+
+      expect(inseridos.get(logsEmail)).toEqual([
+        expect.objectContaining({ status: 'enviado', idMensagemProvedor: 'id-consulente' }),
+      ])
+      expect(inseridos.has(emailQueue)).toBe(false)
+    })
   })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Notificação ao admin (ADMIN_WHATSAPP)
-// Falha vira item da fila (tipo 'admin'), sem log em logs_whatsapp (histórico do consulente).
+// Avisos à Casa (ADMIN_EMAIL_NOTIFICACOES)
+// Falha vira item da fila (tipo 'admin'), sem log em logs_email (histórico do consulente).
 // ─────────────────────────────────────────────────────────────────────────────
-describe('notificação ao admin via WhatsApp', () => {
-  const ADMIN = '+5511900000000'
-
-  /** Provedor que registra os envios; opcionalmente falha só para o admin */
-  function mkProvedor(opcoes: { falharAdmin?: 'lanca' | 'sucesso_false' } = {}) {
-    return {
-      nome: 'zapi',
-      enviarMensagem: vi.fn(async ({ para }: { para: string }) => {
-        if (para === ADMIN && opcoes.falharAdmin === 'lanca') throw new Error('timeout admin')
-        if (para === ADMIN && opcoes.falharAdmin === 'sucesso_false') {
-          return { sucesso: false, erro: 'falhou admin' }
-        }
-        return { sucesso: true, idMensagemProvedor: `m-${para}` }
-      }),
-    }
-  }
-
-  function enviosParaAdmin(provedor: ReturnType<typeof mkProvedor>) {
-    return provedor.enviarMensagem.mock.calls.filter(([m]) => m.para === ADMIN).map(([m]) => m)
-  }
-
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date('2025-04-01T12:00:00-03:00'))
-    delete process.env.MAX_AGENDAMENTOS_MES
-    vi.mocked(getSlotsDisponiveis).mockResolvedValue({
-      slots: [{ hora_inicio: '09:00', hora_fim: '10:00' }],
-    } as unknown as Awaited<ReturnType<typeof getSlotsDisponiveis>>)
-    vi.mocked(getEvento).mockResolvedValue(evento)
-    vi.mocked(contarInscritosOcorrencia).mockResolvedValue(0)
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  // Cada ação com o template esperado e os dados que devem chegar nele
+describe('avisos à Casa por e-mail', () => {
   const casos = [
     {
       nome: 'criarAgendamento (novo agendamento)',
       executar: () => criarAgendamento(null, formAgendamento()),
-      template: mensagemNovoAgendamentoAdmin,
-      corpo: 'msg-novo-admin',
-      agendamentoIdFila: 'ag-1',
+      template: emailNovoAgendamentoAdmin,
+      assunto: 'novo-admin',
+      agendamentoIdFila: 'ag-1' as string | null,
       dados: {
         nomeCliente: 'Maria Silva',
         telefoneCliente: '+5511999999999',
+        emailCliente: EMAIL_CONSULENTE,
         dataAgendada: '2025-04-01',
         horaInicio: '09:00',
         horaFim: '10:00',
@@ -462,27 +460,30 @@ describe('notificação ao admin via WhatsApp', () => {
     {
       nome: 'inscreverEmEvento (nova inscrição)',
       executar: () => inscreverEmEvento(null, formInscricao()),
-      template: mensagemNovoAgendamentoAdmin,
-      corpo: 'msg-novo-admin',
-      agendamentoIdFila: 'ag-1',
+      template: emailNovoAgendamentoAdmin,
+      assunto: 'novo-admin',
+      agendamentoIdFila: 'ag-1' as string | null,
       dados: {
         nomeCliente: 'Maria Silva',
         telefoneCliente: '+5511999999999',
+        emailCliente: EMAIL_CONSULENTE,
         dataAgendada: '2025-04-05',
         horaInicio: '19:00', // hora do evento sem segundos
         horaFim: '21:00',
+        tituloEvento: 'Gira de Pretos Velhos',
       },
     },
     {
       nome: 'cancelarAgendamento (cancelamento pelo consulente)',
       executar: () => cancelarAgendamento('tok-abc'),
-      template: mensagemCancelamentoAdmin,
-      corpo: 'msg-cancelamento-admin',
+      template: emailCancelamentoAdmin,
+      assunto: 'cancelamento-admin',
       // Sem vínculo: o cron descartaria item de agendamento cancelado
-      agendamentoIdFila: null,
+      agendamentoIdFila: null as string | null,
       dados: {
         nomeCliente: 'Maria',
         telefoneCliente: '+5511999999999',
+        emailCliente: EMAIL_CONSULENTE,
         dataAgendada: '2025-04-01',
         horaInicio: '09:00',
         horaFim: '10:00',
@@ -490,86 +491,72 @@ describe('notificação ao admin via WhatsApp', () => {
     },
   ]
 
-  describe.each(casos)('$nome', ({ executar, template, corpo, dados, agendamentoIdFila }) => {
-    it('envia ao ADMIN_WHATSAPP com os dados do agendamento', async () => {
-      process.env.ADMIN_WHATSAPP = ADMIN
+  describe.each(casos)('$nome', ({ executar, template, assunto, dados, agendamentoIdFila }) => {
+    const itemFilaAdmin = () =>
+      itemFila(assunto, { agendamentoId: agendamentoIdFila, destinatarios: ADMINS.join(', '), tipo: 'admin' })
+
+    beforeEach(() => {
+      process.env.ADMIN_EMAIL_NOTIFICACOES = ` ${ADMINS[0]} , ${ADMINS[1]} `
+    })
+
+    it('envia para todos os e-mails de ADMIN_EMAIL_NOTIFICACOES, sem log nem fila', async () => {
       const inseridos = capturarInserts()
-      const provedor = mkProvedor()
-      mockGetProvedorWhatsApp.mockReturnValue(provedor)
+      mkEnvio()
 
       await executar()
 
       expect(template).toHaveBeenCalledWith(dados)
-      expect(enviosParaAdmin(provedor)).toEqual([{ para: ADMIN, corpo }])
-      expect(inseridos.has(whatsappQueue)).toBe(false)
+      expect(enviosPara('admin')).toEqual([[ADMINS, expect.objectContaining({ assunto: `assunto-${assunto}` })]])
+      expect(inseridos.has(emailQueue)).toBe(false)
       // Só o consulente entra no histórico
-      expect(inseridos.get(logsWhatsapp)).toEqual([
-        expect.objectContaining({ paraTelefone: '+5511999999999' }),
-      ])
+      expect(inseridos.get(logsEmail)).toEqual([expect.objectContaining({ paraEmail: EMAIL_CONSULENTE })])
     })
 
-    it('não notifica o admin quando ADMIN_WHATSAPP não está configurado', async () => {
+    it('não avisa a Casa quando ADMIN_EMAIL_NOTIFICACOES está vazio', async () => {
+      delete process.env.ADMIN_EMAIL_NOTIFICACOES
       capturarInserts()
-      const provedor = mkProvedor()
-      mockGetProvedorWhatsApp.mockReturnValue(provedor)
+      mkEnvio()
 
       await executar()
 
-      expect(template).not.toHaveBeenCalled()
-      expect(enviosParaAdmin(provedor)).toEqual([])
-      // A mensagem ao consulente continua sendo enviada
-      expect(provedor.enviarMensagem).toHaveBeenCalledOnce()
+      expect(enviosPara('admin')).toEqual([])
+      // O consulente continua recebendo
+      expect(enviosPara('consulente')).toHaveLength(1)
     })
 
-    const itemFilaAdmin = () => ({
-      agendamentoId: agendamentoIdFila,
-      telefone: ADMIN,
-      mensagem: corpo,
-      tipo: 'admin',
-    })
-
-    it('enfileira (sem log) quando o envio ao admin lança, sem afetar o consulente', async () => {
-      process.env.ADMIN_WHATSAPP = ADMIN
+    it('enfileira (sem log) quando o envio à Casa lança, sem afetar o consulente', async () => {
       const inseridos = capturarInserts()
-      mockGetProvedorWhatsApp.mockReturnValue(mkProvedor({ falharAdmin: 'lanca' }))
+      mkEnvio({ admin: 'lanca' })
 
       const resultado = await executar()
 
       // Ações com redirect (mockado) retornam undefined; o cancelamento retorna {}
       expect(resultado === undefined || JSON.stringify(resultado) === '{}').toBe(true)
-      expect(inseridos.get(whatsappQueue)).toEqual([itemFilaAdmin()])
-      expect(inseridos.get(logsWhatsapp)).toEqual([
-        expect.objectContaining({ paraTelefone: '+5511999999999', status: 'enviado' }),
-      ])
-      expect(console.error).toHaveBeenCalled()
-    })
-
-    it('enfileira (sem log) quando o envio ao admin retorna sucesso:false', async () => {
-      process.env.ADMIN_WHATSAPP = ADMIN
-      const inseridos = capturarInserts()
-      mockGetProvedorWhatsApp.mockReturnValue(mkProvedor({ falharAdmin: 'sucesso_false' }))
-
-      await executar()
-
-      expect(inseridos.get(whatsappQueue)).toEqual([itemFilaAdmin()])
-      expect(inseridos.get(logsWhatsapp)).toEqual([
-        expect.objectContaining({ paraTelefone: '+5511999999999', status: 'enviado' }),
+      expect(inseridos.get(emailQueue)).toEqual([itemFilaAdmin()])
+      expect(inseridos.get(logsEmail)).toEqual([
+        expect.objectContaining({ paraEmail: EMAIL_CONSULENTE, status: 'enviado' }),
       ])
     })
 
-    it('enfileira consulente e admin quando o provedor está indisponível', async () => {
-      process.env.ADMIN_WHATSAPP = ADMIN
+    it('enfileira (sem log) quando o Resend recusa o envio à Casa', async () => {
       const inseridos = capturarInserts()
-      mockGetProvedorWhatsApp.mockImplementation(() => {
-        throw new Error('Z-API: configure ZAPI_INSTANCE_ID')
-      })
+      mkEnvio({ admin: 'sucesso_false' })
 
       await executar()
 
-      const fila = inseridos.get(whatsappQueue) as Array<{ tipo: string }>
+      expect(inseridos.get(emailQueue)).toEqual([itemFilaAdmin()])
+    })
+
+    it('enfileira consulente e Casa quando o e-mail não está configurado', async () => {
+      const inseridos = capturarInserts()
+      emailIndisponivel()
+
+      await executar()
+
+      const fila = inseridos.get(emailQueue) as Array<{ tipo: string }>
       expect(fila.map((i) => i.tipo)).toEqual([expect.not.stringMatching(/^admin$/), 'admin'])
       expect(fila[1]).toEqual(itemFilaAdmin())
-      expect(inseridos.has(logsWhatsapp)).toBe(false)
+      expect(inseridos.has(logsEmail)).toBe(false)
     })
   })
 })

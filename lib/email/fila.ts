@@ -1,4 +1,4 @@
-// Regras puras da fila de retry do WhatsApp (whatsapp_queue) e do agendamento
+// Regras puras da fila de retry de e-mail (email_queue) e do agendamento
 // dos lembretes. Ficam fora da rota do cron para serem testáveis sem banco.
 
 import { formatInTimeZone } from 'date-fns-tz'
@@ -15,7 +15,7 @@ export const HORA_LEMBRETES_HORARIO = 9
 // Margem de 5 min para cair no ciclo horário seguinte do cron.
 const ESPERA_RETRY_MINUTOS = [55, 115, 235]
 
-export type TipoFila = 'confirmacao' | 'lembrete_24h' | 'cancelamento' | 'admin'
+export type TipoFila = 'confirmacao' | 'lembrete_24h' | 'cancelamento' | 'admin' | 'medium'
 export type EventoLog = 'confirmacao_agendamento' | 'lembrete_24h' | 'cancelamento'
 
 export interface ItemFilaParaAvaliar {
@@ -51,7 +51,7 @@ export function horaDeLembretesHorario(agora: Date): boolean {
   return Number(formatInTimeZone(agora, FUSO_HORARIO_BR, 'H')) >= HORA_LEMBRETES_HORARIO
 }
 
-/** Evento de logs_whatsapp correspondente ao tipo da fila (admin não é logado). */
+/** Evento de logs_email correspondente ao tipo da fila (avisos à Casa e aos médiuns não são logados). */
 export function eventoLogDoTipo(tipo: string): EventoLog | null {
   switch (tipo) {
     case 'confirmacao':

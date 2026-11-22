@@ -9,11 +9,18 @@ import { db } from '@/lib/db'
 import { agendamentos, clientes } from '@/lib/db/schema'
 import { codigoPg } from '@/lib/db/errors'
 import { getSlotsDisponiveis } from '@/lib/queries/availability'
-import { mensagemConfirmacao, mensagemCancelamento, mensagemNovoAgendamentoAdmin, mensagemCancelamentoAdmin, mensagemConfirmacaoEvento } from '@/lib/whatsapp/templates'
+import {
+  emailConfirmacao,
+  emailCancelamento,
+  emailNovoAgendamentoAdmin,
+  emailCancelamentoAdmin,
+  emailConfirmacaoEvento,
+} from '@/lib/email/templates'
 import { getEvento, contarInscritosOcorrencia } from '@/lib/queries/eventos'
 import { ehOcorrenciaValida } from '@/lib/utils/recorrencia'
 import { normalizarTelefone } from '@/lib/utils/phone'
-import { enviarWhatsAppComFila } from '@/lib/whatsapp/envio'
+import { enviarEmailComFila } from '@/lib/email/envio'
+import { listaDeEmails } from '@/lib/email/cliente'
 
 // Schema de validação para criação de agendamento
 const schemaCriarAgendamento = z.object({
@@ -22,7 +29,8 @@ const schemaCriarAgendamento = z.object({
   hora_fim: z.string().regex(/^\d{2}:\d{2}$/, 'Hora inválida'),
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
   telefone: z.string().min(10, 'Telefone inválido'),
-  email: z.string().email('Email inválido').optional().or(z.literal('')),
+  // E-mail é o único canal de comunicação com o consulente
+  email: z.string().trim().min(1, 'Informe seu e-mail').email('E-mail inválido').toLowerCase(),
   notas: z.string().max(500).optional(),
 })
 
@@ -100,10 +108,10 @@ export async function criarAgendamento(
   try {
     ;[cliente] = await db
       .insert(clientes)
-      .values({ nome, telefone: telefoneNormalizado, email: email || null })
+      .values({ nome, telefone: telefoneNormalizado, email })
       .onConflictDoUpdate({
         target: clientes.telefone,
-        set: { nome, email: email || null },
+        set: { nome, email },
       })
       .returning()
   } catch {
@@ -132,42 +140,37 @@ export async function criarAgendamento(
     return { erro: 'Erro ao criar agendamento. Tente novamente.' }
   }
 
-  // 3. Enviar mensagem de confirmação via WhatsApp
-  const mensagemWpp = mensagemConfirmacao({
-    nomeCliente: nome,
-    dataAgendada: data,
-    horaInicio: hora_inicio,
-    tokenPublico: agendamento.tokenPublico,
-    baseUrl,
-  })
-
-  // Falha (ex.: credenciais ausentes) não cancela o agendamento: vira item da fila (US-16)
-  await enviarWhatsAppComFila({
+  // 3. Confirmação por e-mail. Falha (ex.: Resend sem chave) não cancela o
+  // agendamento: vira item da fila, reenviado pelo cron.
+  await enviarEmailComFila({
     agendamentoId: agendamento.id,
-    telefone: telefoneNormalizado,
-    mensagem: mensagemWpp,
+    para: [email],
+    email: emailConfirmacao({
+      nomeCliente: nome,
+      dataAgendada: data,
+      horaInicio: hora_inicio,
+      tokenPublico: agendamento.tokenPublico,
+      baseUrl,
+    }),
     evento: 'confirmacao_agendamento',
     tipo: 'confirmacao',
   })
 
-  // 4. Notificar admin sobre novo agendamento (US-17)
-  // Falha vai para a fila (tipo 'admin', sem log: logs_whatsapp é o histórico do consulente)
-  const adminWhatsApp = process.env.ADMIN_WHATSAPP
-  if (adminWhatsApp) {
-    await enviarWhatsAppComFila({
-      agendamentoId: agendamento.id,
-      telefone: adminWhatsApp,
-      mensagem: mensagemNovoAgendamentoAdmin({
-        nomeCliente: nome,
-        telefoneCliente: telefoneNormalizado,
-        dataAgendada: data,
-        horaInicio: hora_inicio,
-        horaFim: hora_fim,
-      }),
-      evento: null,
-      tipo: 'admin',
-    })
-  }
+  // 4. Avisar a Casa (US-17). Sem log: logs_email é o histórico do consulente.
+  await enviarEmailComFila({
+    agendamentoId: agendamento.id,
+    para: listaDeEmails(process.env.ADMIN_EMAIL_NOTIFICACOES),
+    email: emailNovoAgendamentoAdmin({
+      nomeCliente: nome,
+      telefoneCliente: telefoneNormalizado,
+      emailCliente: email,
+      dataAgendada: data,
+      horaInicio: hora_inicio,
+      horaFim: hora_fim,
+    }),
+    evento: null,
+    tipo: 'admin',
+  })
 
   // 5. Redirecionar para a página de confirmação
   redirect(`/agendamento/${agendamento.tokenPublico}`)
@@ -180,7 +183,8 @@ const schemaInscreverEvento = z.object({
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
   telefone: z.string().min(10, 'Telefone inválido'),
-  email: z.string().email('Email inválido').optional().or(z.literal('')),
+  // E-mail é o único canal de comunicação com o consulente
+  email: z.string().trim().min(1, 'Informe seu e-mail').email('E-mail inválido').toLowerCase(),
   notas: z.string().max(500).optional(),
 })
 
@@ -228,10 +232,10 @@ export async function inscreverEmEvento(
   try {
     ;[cliente] = await db
       .insert(clientes)
-      .values({ nome, telefone: telefoneNormalizado, email: email || null })
+      .values({ nome, telefone: telefoneNormalizado, email })
       .onConflictDoUpdate({
         target: clientes.telefone,
-        set: { nome, email: email || null },
+        set: { nome, email },
       })
       .returning()
   } catch {
@@ -257,42 +261,41 @@ export async function inscreverEmEvento(
     return { erro: 'Erro ao registrar inscrição. Tente novamente.' }
   }
 
-  // 6. Enviar confirmação via WhatsApp
-  const mensagemWpp = mensagemConfirmacaoEvento({
-    nomeCliente: nome,
-    tituloEvento: evento.titulo,
-    dataEvento: data,
-    horaInicio: evento.hora_inicio.slice(0, 5),
-    horaFim: evento.hora_fim.slice(0, 5),
-    tokenPublico: agendamento.tokenPublico,
-    baseUrl,
-  })
-
-  await enviarWhatsAppComFila({
+  // 6. Confirmação por e-mail (falha vira item da fila)
+  const horaInicio = evento.hora_inicio.slice(0, 5)
+  const horaFim = evento.hora_fim.slice(0, 5)
+  await enviarEmailComFila({
     agendamentoId: agendamento.id,
-    telefone: telefoneNormalizado,
-    mensagem: mensagemWpp,
+    para: [email],
+    email: emailConfirmacaoEvento({
+      nomeCliente: nome,
+      tituloEvento: evento.titulo,
+      dataEvento: data,
+      horaInicio,
+      horaFim,
+      tokenPublico: agendamento.tokenPublico,
+      baseUrl,
+    }),
     evento: 'confirmacao_agendamento',
     tipo: 'confirmacao',
   })
 
-  // 7. Notificar admin
-  const adminWhatsApp = process.env.ADMIN_WHATSAPP
-  if (adminWhatsApp) {
-    await enviarWhatsAppComFila({
-      agendamentoId: agendamento.id,
-      telefone: adminWhatsApp,
-      mensagem: mensagemNovoAgendamentoAdmin({
-        nomeCliente: nome,
-        telefoneCliente: telefoneNormalizado,
-        dataAgendada: data,
-        horaInicio: evento.hora_inicio.slice(0, 5),
-        horaFim: evento.hora_fim.slice(0, 5),
-      }),
-      evento: null,
-      tipo: 'admin',
-    })
-  }
+  // 7. Avisar a Casa
+  await enviarEmailComFila({
+    agendamentoId: agendamento.id,
+    para: listaDeEmails(process.env.ADMIN_EMAIL_NOTIFICACOES),
+    email: emailNovoAgendamentoAdmin({
+      nomeCliente: nome,
+      telefoneCliente: telefoneNormalizado,
+      emailCliente: email,
+      dataAgendada: data,
+      horaInicio,
+      horaFim,
+      tituloEvento: evento.titulo,
+    }),
+    evento: null,
+    tipo: 'admin',
+  })
 
   redirect(`/agendamento/${agendamento.tokenPublico}`)
 }
@@ -326,14 +329,15 @@ export async function cancelarAgendamento(token: string): Promise<{ erro?: strin
     return { erro: 'Erro ao cancelar. Tente novamente.' }
   }
 
-  // Enviar mensagem de cancelamento ao consulente (falha vira item da fila)
-  await enviarWhatsAppComFila({
+  // E-mail de cancelamento ao consulente (falha vira item da fila).
+  // Consulentes antigos podem não ter e-mail: aí não há o que enviar.
+  await enviarEmailComFila({
     agendamentoId: agendamento.id,
-    telefone: agendamento.cliente.telefone,
-    mensagem: mensagemCancelamento({
+    para: listaDeEmails(agendamento.cliente.email),
+    email: emailCancelamento({
       nomeCliente: agendamento.cliente.nome,
       dataAgendada: agendamento.dataAgendada,
-      horaInicio: agendamento.horaInicio,
+      horaInicio: agendamento.horaInicio.slice(0, 5),
       tokenPublico: token,
       baseUrl,
     }),
@@ -341,25 +345,23 @@ export async function cancelarAgendamento(token: string): Promise<{ erro?: strin
     tipo: 'cancelamento',
   })
 
-  // Notificar admin sobre cancelamento (US-21)
-  const adminWhatsApp = process.env.ADMIN_WHATSAPP
-  if (adminWhatsApp) {
-    await enviarWhatsAppComFila({
-      // Sem agendamentoId: o cron descarta itens de agendamento cancelado (motivoDescarte),
-      // e este aviso é justamente sobre o cancelamento.
-      agendamentoId: null,
-      telefone: adminWhatsApp,
-      mensagem: mensagemCancelamentoAdmin({
-        nomeCliente: agendamento.cliente.nome,
-        telefoneCliente: agendamento.cliente.telefone,
-        dataAgendada: agendamento.dataAgendada,
-        horaInicio: agendamento.horaInicio,
-        horaFim: agendamento.horaFim,
-      }),
-      evento: null,
-      tipo: 'admin',
-    })
-  }
+  // Avisar a Casa (US-21)
+  await enviarEmailComFila({
+    // Sem agendamentoId: o cron descarta itens de agendamento cancelado (motivoDescarte),
+    // e este aviso é justamente sobre o cancelamento.
+    agendamentoId: null,
+    para: listaDeEmails(process.env.ADMIN_EMAIL_NOTIFICACOES),
+    email: emailCancelamentoAdmin({
+      nomeCliente: agendamento.cliente.nome,
+      telefoneCliente: agendamento.cliente.telefone,
+      emailCliente: agendamento.cliente.email,
+      dataAgendada: agendamento.dataAgendada,
+      horaInicio: agendamento.horaInicio.slice(0, 5),
+      horaFim: agendamento.horaFim.slice(0, 5),
+    }),
+    evento: null,
+    tipo: 'admin',
+  })
 
   return {}
 }

@@ -41,6 +41,7 @@ const makeMedium = (overrides: Partial<Medium> = {}): Medium => ({
   nome: 'Mãe Joana',
   especialidade: 'Umbanda',
   telefone: '11988881234',
+  email: null,
   token_acesso: 'token-abc',
   ativo: true,
   criado_em: '2025-01-01T00:00:00Z',
