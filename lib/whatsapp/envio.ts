@@ -12,11 +12,15 @@ type EventoLog = (typeof logsWhatsapp.$inferInsert)['evento']
 export type TipoFila = 'confirmacao' | 'lembrete_24h' | 'cancelamento' | 'admin'
 
 export interface EnvioComFila {
-  agendamentoId: string
+  /** null quando o item da fila não deve ficar preso ao status do agendamento */
+  agendamentoId: string | null
   telefone: string
   mensagem: string
-  /** Evento gravado em logs_whatsapp */
-  evento: EventoLog
+  /**
+   * Evento gravado em logs_whatsapp (histórico do consulente). null = não loga,
+   * como nas notificações ao admin — mesmo critério do cron (eventoLogDoTipo).
+   */
+  evento: EventoLog | null
   /** Tipo gravado em whatsapp_queue (CHECK da tabela) */
   tipo: TipoFila
 }
@@ -43,19 +47,21 @@ export async function enviarWhatsAppComFila(envio: EnvioComFila): Promise<boolea
     return false
   }
 
-  try {
-    await db.insert(logsWhatsapp).values({
-      agendamentoId: envio.agendamentoId,
-      evento: envio.evento,
-      provedor: provedor.nome,
-      paraTelefone: envio.telefone,
-      mensagem: envio.mensagem,
-      idMensagemProvedor: resultado.idMensagemProvedor ?? null,
-      status: resultado.sucesso ? 'enviado' : 'falhou',
-      mensagemErro: resultado.erro ?? null,
-    })
-  } catch (erroLog) {
-    console.error('[WhatsApp] Falha ao gravar log:', mensagemErro(erroLog))
+  if (envio.evento && envio.agendamentoId) {
+    try {
+      await db.insert(logsWhatsapp).values({
+        agendamentoId: envio.agendamentoId,
+        evento: envio.evento,
+        provedor: provedor.nome,
+        paraTelefone: envio.telefone,
+        mensagem: envio.mensagem,
+        idMensagemProvedor: resultado.idMensagemProvedor ?? null,
+        status: resultado.sucesso ? 'enviado' : 'falhou',
+        mensagemErro: resultado.erro ?? null,
+      })
+    } catch (erroLog) {
+      console.error('[WhatsApp] Falha ao gravar log:', mensagemErro(erroLog))
+    }
   }
 
   if (!resultado.sucesso) {

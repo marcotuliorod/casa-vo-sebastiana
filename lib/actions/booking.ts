@@ -9,7 +9,6 @@ import { db } from '@/lib/db'
 import { agendamentos, clientes } from '@/lib/db/schema'
 import { codigoPg } from '@/lib/db/errors'
 import { getSlotsDisponiveis } from '@/lib/queries/availability'
-import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
 import { mensagemConfirmacao, mensagemCancelamento, mensagemNovoAgendamentoAdmin, mensagemCancelamentoAdmin, mensagemConfirmacaoEvento } from '@/lib/whatsapp/templates'
 import { getEvento, contarInscritosOcorrencia } from '@/lib/queries/eventos'
 import { ehOcorrenciaValida } from '@/lib/utils/recorrencia'
@@ -152,21 +151,22 @@ export async function criarAgendamento(
   })
 
   // 4. Notificar admin sobre novo agendamento (US-17)
+  // Falha vai para a fila (tipo 'admin', sem log: logs_whatsapp é o histórico do consulente)
   const adminWhatsApp = process.env.ADMIN_WHATSAPP
   if (adminWhatsApp) {
-    try {
-      const provedor = getProvedorWhatsApp()
-      const msgAdmin = mensagemNovoAgendamentoAdmin({
+    await enviarWhatsAppComFila({
+      agendamentoId: agendamento.id,
+      telefone: adminWhatsApp,
+      mensagem: mensagemNovoAgendamentoAdmin({
         nomeCliente: nome,
         telefoneCliente: telefoneNormalizado,
         dataAgendada: data,
         horaInicio: hora_inicio,
         horaFim: hora_fim,
-      })
-      await provedor.enviarMensagem({ para: adminWhatsApp, corpo: msgAdmin })
-    } catch (err) {
-      console.error('[WhatsApp] Falha ao notificar admin:', err)
-    }
+      }),
+      evento: null,
+      tipo: 'admin',
+    })
   }
 
   // 5. Redirecionar para a página de confirmação
@@ -279,21 +279,19 @@ export async function inscreverEmEvento(
   // 7. Notificar admin
   const adminWhatsApp = process.env.ADMIN_WHATSAPP
   if (adminWhatsApp) {
-    try {
-      const provedor = getProvedorWhatsApp()
-      await provedor.enviarMensagem({
-        para: adminWhatsApp,
-        corpo: mensagemNovoAgendamentoAdmin({
-          nomeCliente: nome,
-          telefoneCliente: telefoneNormalizado,
-          dataAgendada: data,
-          horaInicio: evento.hora_inicio.slice(0, 5),
-          horaFim: evento.hora_fim.slice(0, 5),
-        }),
-      })
-    } catch (err) {
-      console.error('[WhatsApp] Falha ao notificar admin sobre evento:', err)
-    }
+    await enviarWhatsAppComFila({
+      agendamentoId: agendamento.id,
+      telefone: adminWhatsApp,
+      mensagem: mensagemNovoAgendamentoAdmin({
+        nomeCliente: nome,
+        telefoneCliente: telefoneNormalizado,
+        dataAgendada: data,
+        horaInicio: evento.hora_inicio.slice(0, 5),
+        horaFim: evento.hora_fim.slice(0, 5),
+      }),
+      evento: null,
+      tipo: 'admin',
+    })
   }
 
   redirect(`/agendamento/${agendamento.tokenPublico}`)
@@ -346,19 +344,21 @@ export async function cancelarAgendamento(token: string): Promise<{ erro?: strin
   // Notificar admin sobre cancelamento (US-21)
   const adminWhatsApp = process.env.ADMIN_WHATSAPP
   if (adminWhatsApp) {
-    try {
-      const provedor = getProvedorWhatsApp()
-      const msgAdmin = mensagemCancelamentoAdmin({
+    await enviarWhatsAppComFila({
+      // Sem agendamentoId: o cron descarta itens de agendamento cancelado (motivoDescarte),
+      // e este aviso é justamente sobre o cancelamento.
+      agendamentoId: null,
+      telefone: adminWhatsApp,
+      mensagem: mensagemCancelamentoAdmin({
         nomeCliente: agendamento.cliente.nome,
         telefoneCliente: agendamento.cliente.telefone,
         dataAgendada: agendamento.dataAgendada,
         horaInicio: agendamento.horaInicio,
         horaFim: agendamento.horaFim,
-      })
-      await provedor.enviarMensagem({ para: adminWhatsApp, corpo: msgAdmin })
-    } catch (err) {
-      console.error('[WhatsApp] Falha ao notificar admin sobre cancelamento:', err)
-    }
+      }),
+      evento: null,
+      tipo: 'admin',
+    })
   }
 
   return {}

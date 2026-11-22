@@ -405,17 +405,20 @@ describe('inscreverEmEvento — WhatsApp', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Notificação ao admin (ADMIN_WHATSAPP)
-// Hoje é "melhor esforço": envia direto ao provedor e só loga a falha no console.
+// Falha vira item da fila (tipo 'admin'), sem log em logs_whatsapp (histórico do consulente).
 // ─────────────────────────────────────────────────────────────────────────────
 describe('notificação ao admin via WhatsApp', () => {
   const ADMIN = '+5511900000000'
 
   /** Provedor que registra os envios; opcionalmente falha só para o admin */
-  function mkProvedor(opcoes: { falharAdmin?: boolean } = {}) {
+  function mkProvedor(opcoes: { falharAdmin?: 'lanca' | 'sucesso_false' } = {}) {
     return {
       nome: 'zapi',
       enviarMensagem: vi.fn(async ({ para }: { para: string }) => {
-        if (para === ADMIN && opcoes.falharAdmin) throw new Error('timeout admin')
+        if (para === ADMIN && opcoes.falharAdmin === 'lanca') throw new Error('timeout admin')
+        if (para === ADMIN && opcoes.falharAdmin === 'sucesso_false') {
+          return { sucesso: false, erro: 'falhou admin' }
+        }
         return { sucesso: true, idMensagemProvedor: `m-${para}` }
       }),
     }
@@ -447,6 +450,7 @@ describe('notificação ao admin via WhatsApp', () => {
       executar: () => criarAgendamento(null, formAgendamento()),
       template: mensagemNovoAgendamentoAdmin,
       corpo: 'msg-novo-admin',
+      agendamentoIdFila: 'ag-1',
       dados: {
         nomeCliente: 'Maria Silva',
         telefoneCliente: '+5511999999999',
@@ -460,6 +464,7 @@ describe('notificação ao admin via WhatsApp', () => {
       executar: () => inscreverEmEvento(null, formInscricao()),
       template: mensagemNovoAgendamentoAdmin,
       corpo: 'msg-novo-admin',
+      agendamentoIdFila: 'ag-1',
       dados: {
         nomeCliente: 'Maria Silva',
         telefoneCliente: '+5511999999999',
@@ -473,6 +478,8 @@ describe('notificação ao admin via WhatsApp', () => {
       executar: () => cancelarAgendamento('tok-abc'),
       template: mensagemCancelamentoAdmin,
       corpo: 'msg-cancelamento-admin',
+      // Sem vínculo: o cron descartaria item de agendamento cancelado
+      agendamentoIdFila: null,
       dados: {
         nomeCliente: 'Maria',
         telefoneCliente: '+5511999999999',
@@ -483,10 +490,10 @@ describe('notificação ao admin via WhatsApp', () => {
     },
   ]
 
-  describe.each(casos)('$nome', ({ executar, template, corpo, dados }) => {
+  describe.each(casos)('$nome', ({ executar, template, corpo, dados, agendamentoIdFila }) => {
     it('envia ao ADMIN_WHATSAPP com os dados do agendamento', async () => {
       process.env.ADMIN_WHATSAPP = ADMIN
-      capturarInserts()
+      const inseridos = capturarInserts()
       const provedor = mkProvedor()
       mockGetProvedorWhatsApp.mockReturnValue(provedor)
 
@@ -494,6 +501,11 @@ describe('notificação ao admin via WhatsApp', () => {
 
       expect(template).toHaveBeenCalledWith(dados)
       expect(enviosParaAdmin(provedor)).toEqual([{ para: ADMIN, corpo }])
+      expect(inseridos.has(whatsappQueue)).toBe(false)
+      // Só o consulente entra no histórico
+      expect(inseridos.get(logsWhatsapp)).toEqual([
+        expect.objectContaining({ paraTelefone: '+5511999999999' }),
+      ])
     })
 
     it('não notifica o admin quando ADMIN_WHATSAPP não está configurado', async () => {
@@ -509,33 +521,55 @@ describe('notificação ao admin via WhatsApp', () => {
       expect(provedor.enviarMensagem).toHaveBeenCalledOnce()
     })
 
-    it('falha ao notificar o admin não quebra a ação nem a mensagem ao consulente', async () => {
+    const itemFilaAdmin = () => ({
+      agendamentoId: agendamentoIdFila,
+      telefone: ADMIN,
+      mensagem: corpo,
+      tipo: 'admin',
+    })
+
+    it('enfileira (sem log) quando o envio ao admin lança, sem afetar o consulente', async () => {
       process.env.ADMIN_WHATSAPP = ADMIN
       const inseridos = capturarInserts()
-      const provedor = mkProvedor({ falharAdmin: true })
-      mockGetProvedorWhatsApp.mockReturnValue(provedor)
+      mockGetProvedorWhatsApp.mockReturnValue(mkProvedor({ falharAdmin: 'lanca' }))
 
       const resultado = await executar()
 
       // Ações com redirect (mockado) retornam undefined; o cancelamento retorna {}
       expect(resultado === undefined || JSON.stringify(resultado) === '{}').toBe(true)
-      expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining('Falha ao notificar admin'),
-        expect.any(Error)
-      )
-      // Consulente recebeu e foi logado como enviado
-      expect(inseridos.get(logsWhatsapp)).toEqual([expect.objectContaining({ status: 'enviado' })])
+      expect(inseridos.get(whatsappQueue)).toEqual([itemFilaAdmin()])
+      expect(inseridos.get(logsWhatsapp)).toEqual([
+        expect.objectContaining({ paraTelefone: '+5511999999999', status: 'enviado' }),
+      ])
+      expect(console.error).toHaveBeenCalled()
     })
 
-    it('não lança quando o provedor está indisponível para o admin também', async () => {
+    it('enfileira (sem log) quando o envio ao admin retorna sucesso:false', async () => {
       process.env.ADMIN_WHATSAPP = ADMIN
-      capturarInserts()
+      const inseridos = capturarInserts()
+      mockGetProvedorWhatsApp.mockReturnValue(mkProvedor({ falharAdmin: 'sucesso_false' }))
+
+      await executar()
+
+      expect(inseridos.get(whatsappQueue)).toEqual([itemFilaAdmin()])
+      expect(inseridos.get(logsWhatsapp)).toEqual([
+        expect.objectContaining({ paraTelefone: '+5511999999999', status: 'enviado' }),
+      ])
+    })
+
+    it('enfileira consulente e admin quando o provedor está indisponível', async () => {
+      process.env.ADMIN_WHATSAPP = ADMIN
+      const inseridos = capturarInserts()
       mockGetProvedorWhatsApp.mockImplementation(() => {
         throw new Error('Z-API: configure ZAPI_INSTANCE_ID')
       })
 
-      await executar() // não deve lançar
-      expect(template).not.toHaveBeenCalled()
+      await executar()
+
+      const fila = inseridos.get(whatsappQueue) as Array<{ tipo: string }>
+      expect(fila.map((i) => i.tipo)).toEqual([expect.not.stringMatching(/^admin$/), 'admin'])
+      expect(fila[1]).toEqual(itemFilaAdmin())
+      expect(inseridos.has(logsWhatsapp)).toBe(false)
     })
   })
 })
