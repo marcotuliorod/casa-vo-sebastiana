@@ -1,8 +1,8 @@
 'use client'
 
-import { useTransition, useEffect } from 'react'
+import { useActionState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useFormState, useFormStatus } from 'react-dom'
+import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
 import { Button } from '@/components/ui/button'
 import { bloquearData, desbloquearData } from '@/lib/actions/admin'
 import { formatarData } from '@/lib/utils/date'
@@ -10,7 +10,7 @@ import type { DataBloqueada } from '@/types/database'
 import { Trash2, Plus, Loader2 } from 'lucide-react'
 
 function BotaoBloqueio() {
-  const { pending } = useFormStatus()
+  const pending = useFormPending()
   return (
     <Button type="submit" size="sm" disabled={pending}>
       {pending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
@@ -24,7 +24,7 @@ interface BloqueiosListaProps {
 }
 
 export function BloqueiosLista({ bloqueios }: BloqueiosListaProps) {
-  const [estado, action] = useFormState(bloquearData, null)
+  const [estado, action] = useActionState(bloquearData, null)
   const [, startTransition] = useTransition()
   const router = useRouter()
 
@@ -44,7 +44,7 @@ export function BloqueiosLista({ bloqueios }: BloqueiosListaProps) {
   return (
     <div className="space-y-4">
       {/* Formulário para adicionar bloqueio */}
-      <form action={action} className="bg-white rounded-xl border p-4">
+      <FormSemReset action={action} limparApos={estado && !estado.erro ? estado : null} className="bg-white rounded-xl border p-4">
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Adicionar bloqueio</h3>
 
         {estado?.erro && (
@@ -95,7 +95,7 @@ export function BloqueiosLista({ bloqueios }: BloqueiosListaProps) {
         <p className="text-xs text-gray-400 mt-2">
           Deixe início/fim em branco para bloquear o dia inteiro.
         </p>
-      </form>
+      </FormSemReset>
 
       {/* Lista de bloqueios */}
       {bloqueios.length === 0 ? (

@@ -1,7 +1,7 @@
 'use client'
 
-import { useFormState, useFormStatus } from 'react-dom'
-import { useTransition, useEffect, useState } from 'react'
+import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
+import { useActionState, useTransition, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   criarRecado,
@@ -21,7 +21,7 @@ import { formatDistanceToNow, differenceInDays, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 function SubmitButton({ label }: { label: string }) {
-  const { pending } = useFormStatus()
+  const pending = useFormPending()
   return (
     <Button type="submit" disabled={pending} className="bg-brand hover:bg-brand-hover">
       {pending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
@@ -50,7 +50,7 @@ function FormRecado({
   labelSubmit: string
 }) {
   return (
-    <form action={actionFn} className="space-y-3">
+    <FormSemReset action={actionFn} className="space-y-3">
       <div className="space-y-1">
         <Label htmlFor={recado ? `titulo-${recado.id}` : 'titulo-novo'} className="text-xs">
           Título *
@@ -121,7 +121,7 @@ function FormRecado({
           Cancelar
         </Button>
       </div>
-    </form>
+    </FormSemReset>
   )
 }
 
@@ -133,7 +133,7 @@ function LinhaRecado({ recado }: { recado: Recado }) {
   const [erroExcluir, setErroExcluir] = useState<string | null>(null)
 
   const editarComId = editarRecado.bind(null, recado.id)
-  const [estadoEditar, actionEditar] = useFormState(
+  const [estadoEditar, actionEditar] = useActionState(
     editarComId as (estado: EstadoFormRecado, formData: FormData) => Promise<EstadoFormRecado>,
     null
   )
@@ -259,7 +259,7 @@ function LinhaRecado({ recado }: { recado: Recado }) {
 export function RecadosManager({ recados }: { recados: Recado[] }) {
   const router = useRouter()
   const [criando, setCriando] = useState(false)
-  const [estadoCriar, actionCriar] = useFormState(criarRecado, null)
+  const [estadoCriar, actionCriar] = useActionState(criarRecado, null)
 
   useEffect(() => {
     if (estadoCriar === null && criando) {

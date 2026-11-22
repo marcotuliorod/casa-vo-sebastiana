@@ -4,18 +4,26 @@ import { BookingForm } from '@/components/booking/BookingForm'
 
 // ─── Mocks ────────────────────────────────────────────────────────
 
-// useFormState retorna [estado, action]
+// useActionState retorna [estado, action, pending]
 // Por padrão estado=null (sem erros)
 let mockEstado: Record<string, unknown> | null = null
+
+vi.mock('react', async (importOriginal) => {
+  const original = await importOriginal<typeof import('react')>()
+  return {
+    ...original,
+    useActionState: vi.fn((_action: unknown, initialState: unknown) => [
+      mockEstado ?? initialState,
+      vi.fn(),
+      false,
+    ]),
+  }
+})
 
 vi.mock('react-dom', async (importOriginal) => {
   const original = await importOriginal<typeof import('react-dom')>()
   return {
     ...original,
-    useFormState: vi.fn((_action: unknown, initialState: unknown) => [
-      mockEstado ?? initialState,
-      vi.fn(),
-    ]),
     useFormStatus: vi.fn(() => ({ pending: false })),
   }
 })

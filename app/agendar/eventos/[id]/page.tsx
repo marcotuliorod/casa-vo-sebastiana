@@ -6,17 +6,19 @@ import { TextoFormatado } from '@/components/shared/TextoFormatado'
 import { EventoInscricaoForm } from './EventoInscricaoForm'
 
 interface PageProps {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 export async function generateMetadata({ params }: PageProps) {
-  const evento = await getEvento(params.id)
+  const { id } = await params
+  const evento = await getEvento(id)
   if (!evento) return { title: 'Evento não encontrado' }
   return { title: `${evento.titulo} — Casa de Vó Sebastiana` }
 }
 
 export default async function EventoPage({ params }: PageProps) {
-  const evento = await getEvento(params.id)
+  const { id } = await params
+  const evento = await getEvento(id)
 
   if (!evento || !evento.ativo) {
     notFound()

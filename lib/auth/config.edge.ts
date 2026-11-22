@@ -1,9 +1,9 @@
 // Config Auth.js compartilhada e "edge-safe" — SEM adapter e SEM providers que
-// tocam o banco. O middleware.ts roda em Edge Runtime, que não suporta o driver
+// tocam o banco. O proxy.ts (antigo middleware.ts) rodava em Edge Runtime até o Next 15, que não suporta o driver
 // `postgres` (TCP/Node). Importar o adapter aqui quebraria o middleware mesmo
 // com sessão JWT, porque o import por si só já puxa o driver Node para o bundle.
 //
-// middleware.ts usa só esta config (decodifica/valida o JWT do cookie, sem
+// proxy.ts usa só esta config (decodifica/valida o JWT do cookie, sem
 // tocar o banco). lib/auth/config.ts usa esta config + adapter + providers
 // para tudo que roda em Node.js runtime (Server Actions, Server Components,
 // as rotas de API do Auth.js).

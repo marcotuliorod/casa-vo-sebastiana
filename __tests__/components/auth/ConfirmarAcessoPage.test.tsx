@@ -7,8 +7,8 @@ function campo(container: HTMLElement, name: string) {
 }
 
 describe('página /auth/confirmar', () => {
-  it('envia token e email ao callback do Auth.js via GET com o botão de entrada', () => {
-    const { container } = render(ConfirmarAcessoPage({ searchParams: { token: 'tok123', email: 'a@b.com' } }))
+  it('envia token e email ao callback do Auth.js via GET com o botão de entrada', async () => {
+    const { container } = render(await ConfirmarAcessoPage({ searchParams: Promise.resolve({ token: 'tok123', email: 'a@b.com' }) }))
 
     const form = container.querySelector('form')!
     expect(form.getAttribute('method')?.toUpperCase()).toBe('GET')
@@ -18,18 +18,18 @@ describe('página /auth/confirmar', () => {
     expect(screen.getByRole('button', { name: /entrar no painel/i })).toBeTruthy()
   })
 
-  it('sempre redireciona para /admin, ignorando callbackUrl vindo de links antigos', () => {
+  it('sempre redireciona para /admin, ignorando callbackUrl vindo de links antigos', async () => {
     const { container } = render(
-      ConfirmarAcessoPage({
-        searchParams: { token: 't', email: 'a@b.com', callbackUrl: 'https://agenda.mtrm.tech/auth/login' } as never,
+      await ConfirmarAcessoPage({
+        searchParams: Promise.resolve({ token: 't', email: 'a@b.com', callbackUrl: 'https://agenda.mtrm.tech/auth/login' }) as never,
       }),
     )
 
     expect(campo(container, 'callbackUrl')?.value).toBe('/admin')
   })
 
-  it('mostra "Link inválido" quando faltam parâmetros', () => {
-    const { container } = render(ConfirmarAcessoPage({ searchParams: {} }))
+  it('mostra "Link inválido" quando faltam parâmetros', async () => {
+    const { container } = render(await ConfirmarAcessoPage({ searchParams: Promise.resolve({}) }))
 
     expect(container.querySelector('form')).toBeNull()
     expect(screen.getByText(/link inválido/i)).toBeTruthy()

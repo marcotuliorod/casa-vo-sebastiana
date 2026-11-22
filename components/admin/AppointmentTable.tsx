@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
-import { useFormState, useFormStatus } from 'react-dom'
+import { useActionState, useState, useTransition, useEffect } from 'react'
+import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
 import { useRouter } from 'next/navigation'
 import { StatusBadge } from './StatusBadge'
 import { AdminCard, AdminCardBody, AdminCardSub } from './AdminCard'
@@ -94,7 +94,7 @@ function ExportarCSVButton({ agendamentos, mediuns = [] }: AppointmentTableProps
 }
 
 function SubmitEditarButton() {
-  const { pending } = useFormStatus()
+  const pending = useFormPending()
   return (
     <Button type="submit" size="sm" disabled={pending} className="bg-brand hover:bg-brand-hover">
       {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
@@ -121,7 +121,7 @@ function CardAgendamento({
   const [erroExcluir, setErroExcluir] = useState<string | null>(null)
 
   const editarComId = editarAgendamento.bind(null, ag.id)
-  const [estadoEditar, actionEditar] = useFormState(
+  const [estadoEditar, actionEditar] = useActionState(
     editarComId as (estado: EstadoFormAgendamento, formData: FormData) => Promise<EstadoFormAgendamento>,
     null
   )
@@ -303,7 +303,7 @@ function CardAgendamento({
       {editando && (
         <AdminCardSub>
           <p className="text-xs font-medium text-gray-600 uppercase mb-3">Editar agendamento</p>
-          <form action={actionEditar} className="space-y-3">
+          <FormSemReset action={actionEditar} className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label htmlFor={`data-${ag.id}`} className="text-xs">Data</Label>
@@ -367,7 +367,7 @@ function CardAgendamento({
                 Cancelar
               </Button>
             </div>
-          </form>
+          </FormSemReset>
         </AdminCardSub>
       )}
     </AdminCard>
