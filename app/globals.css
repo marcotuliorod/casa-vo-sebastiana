@@ -52,11 +52,3 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
-
-/* Fonte serifada para títulos espirituais */
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap');
-
-:root {
-  --font-inter: 'Inter', system-ui, sans-serif;
-  --font-playfair: 'Playfair Display', Georgia, serif;
-}
