@@ -79,7 +79,7 @@ export async function bloquearData(
   const resultado = schemaBloqueio.safeParse(dados)
 
   if (!resultado.success) {
-    return { erro: resultado.error.errors[0].message }
+    return { erro: resultado.error.issues[0].message }
   }
 
   const { data, hora_inicio, hora_fim, motivo } = resultado.data
@@ -238,7 +238,7 @@ export async function criarMedium(
   const resultado = schemaMedium.safeParse(dados)
 
   if (!resultado.success) {
-    return { erro: resultado.error.errors[0].message }
+    return { erro: resultado.error.issues[0].message }
   }
 
   const { nome, especialidade, telefone } = resultado.data
@@ -344,12 +344,12 @@ const schemaEvento = z.object({
   hora_inicio: z.string().regex(/^\d{2}:\d{2}$/, 'Hora de início inválida'),
   hora_fim: z.string().regex(/^\d{2}:\d{2}$/, 'Hora de fim inválida'),
   capacidade: z.coerce
-    .number({ invalid_type_error: 'Capacidade inválida' })
+    .number({ error: 'Capacidade inválida' })
     .int()
     .min(1, 'Capacidade mínima: 1')
     .max(500, 'Capacidade máxima: 500'),
   recorrencia: z.enum(['nenhuma', 'semanal', 'quinzenal', 'mensal'], {
-    invalid_type_error: 'Recorrência inválida',
+    error: 'Recorrência inválida',
   }),
   data_fim_recorrencia: z
     .string()
@@ -357,7 +357,7 @@ const schemaEvento = z.object({
     .optional()
     .or(z.literal('')),
   lembrete_horas: z.coerce
-    .number({ invalid_type_error: 'Lembrete inválido' })
+    .number({ error: 'Lembrete inválido' })
     .int()
     .min(1)
     .max(168)
@@ -374,7 +374,7 @@ export async function criarEvento(
   const dados = dadosDoFormEvento(formData)
   const resultado = schemaEvento.safeParse(dados)
   if (!resultado.success) {
-    const primeiro = resultado.error.errors[0]
+    const primeiro = resultado.error.issues[0]
     return { erro: primeiro.message, campo: String(primeiro.path[0]) }
   }
 
@@ -419,7 +419,7 @@ export async function editarEvento(
   const dados = dadosDoFormEvento(formData)
   const resultado = schemaEvento.safeParse(dados)
   if (!resultado.success) {
-    const primeiro = resultado.error.errors[0]
+    const primeiro = resultado.error.issues[0]
     return { erro: primeiro.message, campo: String(primeiro.path[0]) }
   }
 
@@ -523,7 +523,7 @@ export async function editarAgendamento(
   const dados = Object.fromEntries(formData.entries())
   const resultado = schemaEditarAgendamento.safeParse(dados)
   if (!resultado.success) {
-    const primeiro = resultado.error.errors[0]
+    const primeiro = resultado.error.issues[0]
     return { erro: primeiro.message, campo: String(primeiro.path[0]) }
   }
 
@@ -584,7 +584,7 @@ export async function editarCliente(
   const dados = Object.fromEntries(formData.entries())
   const resultado = schemaCliente.safeParse(dados)
   if (!resultado.success) {
-    const primeiro = resultado.error.errors[0]
+    const primeiro = resultado.error.issues[0]
     return { erro: primeiro.message, campo: String(primeiro.path[0]) }
   }
 
@@ -640,7 +640,7 @@ export async function editarMedium(
 
   const dados = Object.fromEntries(formData.entries())
   const resultado = schemaMedium.safeParse(dados)
-  if (!resultado.success) return { erro: resultado.error.errors[0].message }
+  if (!resultado.success) return { erro: resultado.error.issues[0].message }
 
   const { nome, especialidade, telefone } = resultado.data
 
