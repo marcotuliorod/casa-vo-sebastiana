@@ -65,7 +65,7 @@ function ExportarCSVButton({ agendamentos, mediuns = [] }: AppointmentTableProps
       const medium = mediuns.find((m) => m.id === ag.medium_id)?.nome ?? '—'
       return [
         ag.data_agendada,
-        `${ag.hora_inicio}–${ag.hora_fim}`,
+        `${ag.hora_inicio.slice(0, 5)}–${ag.hora_fim.slice(0, 5)}`,
         ag.clientes.nome,
         ag.clientes.telefone,
         medium,

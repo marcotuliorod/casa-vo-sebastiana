@@ -77,7 +77,7 @@ export default async function HistoricoPage({ searchParams }: Props) {
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-500">
                       <Clock className="h-3.5 w-3.5 text-brand-muted flex-shrink-0" />
-                      <span>{ag.hora_inicio} — {ag.hora_fim}</span>
+                      <span>{ag.hora_inicio.slice(0, 5)} — {ag.hora_fim.slice(0, 5)}</span>
                     </div>
                     {ag.medium_id && (
                       <div className="flex items-center gap-2 text-xs text-gray-400">
