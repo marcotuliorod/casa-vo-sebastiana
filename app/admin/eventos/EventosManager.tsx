@@ -1,7 +1,7 @@
 'use client'
 
-import { useFormState, useFormStatus } from 'react-dom'
-import { useTransition, useEffect, useState } from 'react'
+import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
+import { useActionState, useTransition, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   criarEvento,
@@ -46,7 +46,7 @@ function formatarHora(hora: string) {
 // ─── Botão de submit com loading ─────────────────────────────
 
 function BotaoSubmit({ label }: { label: string }) {
-  const { pending } = useFormStatus()
+  const pending = useFormPending()
   return (
     <Button type="submit" disabled={pending} className="w-full">
       {pending ? 'Salvando...' : label}
@@ -74,7 +74,7 @@ function FormEvento({
   )
 
   return (
-    <form action={action} className="space-y-4">
+    <FormSemReset action={action} className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Título */}
         <div className="sm:col-span-2 space-y-1">
@@ -236,7 +236,7 @@ function FormEvento({
           </Button>
         )}
       </div>
-    </form>
+    </FormSemReset>
   )
 }
 
@@ -252,7 +252,7 @@ function LinhaEvento({ evento }: { evento: EventoComOcorrencias }) {
 
   // Estado do form de edição
   const editarComId = editarEvento.bind(null, evento.id)
-  const [estadoEditar, actionEditar] = useFormState(editarComId as (estado: EstadoFormEvento, formData: FormData) => Promise<EstadoFormEvento>, null)
+  const [estadoEditar, actionEditar] = useActionState(editarComId as (estado: EstadoFormEvento, formData: FormData) => Promise<EstadoFormEvento>, null)
 
   const [salvo, setSalvo] = useState(false)
 
@@ -457,7 +457,7 @@ export function EventosManager({ eventos }: { eventos: EventoComOcorrencias[] })
   const router = useRouter()
   const [mostrarFormCriacao, setMostrarFormCriacao] = useState(false)
 
-  const [estadoCriar, actionCriar] = useFormState(
+  const [estadoCriar, actionCriar] = useActionState(
     criarEvento as (estado: EstadoFormEvento, formData: FormData) => Promise<EstadoFormEvento>,
     null
   )

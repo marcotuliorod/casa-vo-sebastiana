@@ -5,12 +5,12 @@ import { LogIn } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
-export default function ConfirmarAcessoPage({
+export default async function ConfirmarAcessoPage({
   searchParams,
 }: {
-  searchParams: { token?: string; email?: string }
+  searchParams: Promise<{ token?: string; email?: string }>
 }) {
-  const { token, email } = searchParams
+  const { token, email } = await searchParams
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-light via-background to-background flex items-center justify-center px-4">

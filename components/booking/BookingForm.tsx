@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useFormState, useFormStatus } from 'react-dom'
+import { useActionState, useState } from 'react'
+import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -55,7 +55,7 @@ function AppointmentSummary({ data, horaInicio, horaFim }: BookingFormProps) {
 }
 
 function SubmitButton() {
-  const { pending } = useFormStatus()
+  const pending = useFormPending()
   return (
     <Button
       type="submit"
@@ -76,7 +76,7 @@ function SubmitButton() {
 }
 
 export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
-  const [estado, action] = useFormState<EstadoFormAgendamento, FormData>(
+  const [estado, action] = useActionState<EstadoFormAgendamento, FormData>(
     criarAgendamento,
     null
   )
@@ -87,7 +87,7 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
   const NOTAS_MAX = 500
 
   return (
-    <form action={action} className="space-y-5">
+    <FormSemReset action={action} className="space-y-5">
       <input type="hidden" name="data" value={data} />
       <input type="hidden" name="hora_inicio" value={horaInicio} />
       <input type="hidden" name="hora_fim" value={horaFim} />
@@ -196,6 +196,6 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
       <p className="text-center text-xs text-gray-400">
         Você receberá uma confirmação via WhatsApp
       </p>
-    </form>
+    </FormSemReset>
   )
 }

@@ -1,7 +1,7 @@
 'use client'
 
-import { useFormState, useFormStatus } from 'react-dom'
-import { useTransition, useEffect, useState } from 'react'
+import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
+import { useActionState, useTransition, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   editarCliente,
@@ -23,7 +23,7 @@ interface ClienteComContagem extends Cliente {
 }
 
 function SubmitSalvarButton() {
-  const { pending } = useFormStatus()
+  const pending = useFormPending()
   return (
     <Button type="submit" size="sm" disabled={pending} className="bg-brand hover:bg-brand-hover">
       {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
@@ -39,13 +39,13 @@ function LinhaConsulente({ cliente }: { cliente: ClienteComContagem }) {
   const [erroExcluir, setErroExcluir] = useState<string | null>(null)
 
   const editarComId = editarCliente.bind(null, cliente.id)
-  const [estadoEditar, actionEditar] = useFormState(
+  const [estadoEditar, actionEditar] = useActionState(
     editarComId as (estado: EstadoFormCliente, formData: FormData) => Promise<EstadoFormCliente>,
     null
   )
 
   useEffect(() => {
-    if (estadoEditar === null && editando) {
+    if (estadoEditar?.ok && editando) {
       setEditando(false)
       router.refresh()
     }
@@ -148,7 +148,7 @@ function LinhaConsulente({ cliente }: { cliente: ClienteComContagem }) {
       {editando && (
         <AdminCardSub>
           <p className="text-xs font-medium text-gray-600 uppercase mb-3">Editar consulente</p>
-          <form action={actionEditar} className="space-y-3">
+          <FormSemReset action={actionEditar} className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label htmlFor={`nome-${cliente.id}`} className="text-xs">Nome *</Label>
@@ -216,7 +216,7 @@ function LinhaConsulente({ cliente }: { cliente: ClienteComContagem }) {
                 Cancelar
               </Button>
             </div>
-          </form>
+          </FormSemReset>
         </AdminCardSub>
       )}
     </AdminCard>

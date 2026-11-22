@@ -737,7 +737,7 @@ describe('editarAgendamento', () => {
     mockDb.update.mockReturnValue(mkUpdateChain())
     const fd = makeFormData(agValido)
     const resultado = await editarAgendamento('ag-1', null, fd)
-    expect(resultado).toBeNull()
+    expect(resultado).toEqual({ ok: true })
   })
 
   it('retorna erro quando hora_fim <= hora_inicio', async () => {
@@ -799,7 +799,7 @@ describe('editarCliente', () => {
     mockDb.update.mockReturnValue(mkUpdateChain())
     const fd = makeFormData(clienteValido)
     const resultado = await editarCliente('cli-1', null, fd)
-    expect(resultado).toBeNull()
+    expect(resultado).toEqual({ ok: true })
   })
 
   it('retorna erro para nome muito curto', async () => {
@@ -824,7 +824,7 @@ describe('editarCliente', () => {
     mockDb.update.mockReturnValue(mkUpdateChain())
     const fd = makeFormData({ ...clienteValido, email: '' })
     const resultado = await editarCliente('cli-1', null, fd)
-    expect(resultado).toBeNull()
+    expect(resultado).toEqual({ ok: true })
   })
 })
 
@@ -867,7 +867,7 @@ describe('editarMedium', () => {
     mockDb.update.mockReturnValue(mkUpdateChain())
     const fd = makeFormData({ nome: 'Carlos Souza', especialidade: 'Passes', telefone: '' })
     const resultado = await editarMedium('med-1', null, fd)
-    expect(resultado).toBeNull()
+    expect(resultado).toEqual({ ok: true })
   })
 
   it('retorna erro de validação para nome muito curto', async () => {

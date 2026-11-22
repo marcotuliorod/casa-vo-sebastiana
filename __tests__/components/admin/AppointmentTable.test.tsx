@@ -7,11 +7,18 @@ import type { AgendamentoComCliente, Medium } from '@/types/database'
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
+vi.mock('react', async (importOriginal) => {
+  const original = await importOriginal<typeof import('react')>()
+  return {
+    ...original,
+    useActionState: vi.fn((_action: unknown, initialState: unknown) => [initialState, vi.fn(), false]),
+  }
+})
+
 vi.mock('react-dom', async (importOriginal) => {
   const original = await importOriginal<typeof import('react-dom')>()
   return {
     ...original,
-    useFormState: vi.fn((_action: unknown, initialState: unknown) => [initialState, vi.fn()]),
     useFormStatus: vi.fn(() => ({ pending: false })),
   }
 })

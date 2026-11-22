@@ -1,4 +1,4 @@
-// Proteção de rotas: /admin/* requer sessão Auth.js válida e email autorizado.
+// Proxy (antigo middleware.ts no Next ≤15): /admin/* requer sessão Auth.js válida e email autorizado.
 //
 // Importa só a config edge-safe (lib/auth/config.edge.ts) — SEM adapter, para
 // não puxar o driver `postgres` (Node/TCP) para o bundle do Edge Runtime.

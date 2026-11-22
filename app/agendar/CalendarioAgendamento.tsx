@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
 import { format, isBefore, startOfDay, addDays } from 'date-fns'
-import 'react-day-picker/dist/style.css'
+import 'react-day-picker/style.css'
 
 const NOMES_DIAS: Record<number, string> = {
   0: 'dom', 1: 'seg', 2: 'ter', 3: 'qua', 4: 'qui', 5: 'sex', 6: 'sáb',
@@ -43,37 +43,34 @@ export function CalendarioAgendamento({ datasBlockeadas, diasComAtendimento, dat
   return (
     <div>
       <div className="flex justify-center">
-        <DayPicker
-          mode="single"
-          selected={dataSelecionada}
-          onSelect={handleSelecionarData}
-          locale={ptBR}
-          disabled={ehDesabilitado}
-          fromDate={hoje}
-          toDate={addDays(hoje, 60)}
-          modifiersClassNames={{
-            selected: 'bg-brand text-white rounded-full',
-            today: 'font-bold text-brand',
-            disabled: 'opacity-30 cursor-not-allowed',
-          }}
-          classNames={{
-            months: 'flex flex-col',
-            month: 'space-y-4',
-            caption: 'flex justify-center pt-1 relative items-center',
-            caption_label: 'text-sm font-medium capitalize',
-            nav: 'space-x-1 flex items-center',
-            nav_button: 'h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100',
-            table: 'w-full border-collapse space-y-1',
-            head_row: 'flex',
-            head_cell: 'text-muted-foreground rounded-md w-9 font-normal text-[0.8rem] flex-1 text-center',
-            row: 'flex w-full mt-2',
-            cell: 'flex-1 text-center text-sm p-0 relative',
-            day: 'h-9 w-9 p-0 font-normal mx-auto flex items-center justify-center rounded-full hover:bg-brand-light transition-colors',
-            day_selected: 'bg-brand text-white hover:bg-brand',
-            day_today: 'font-bold',
-            day_disabled: 'opacity-30',
-          }}
-        />
+        {/* react-day-picker v9: estilo padrão (style.css) com as cores da marca via variáveis --rdp-* */}
+        <div
+          className="[&_.rdp-caption_label]:capitalize [&_.rdp-day_button:not(:disabled):hover]:bg-brand-light"
+          style={
+            {
+              '--rdp-accent-color': '#4A86C8', // brand
+              '--rdp-accent-background-color': '#EEF5FB', // brand-light
+              '--rdp-today-color': '#4A86C8',
+              '--rdp-day-height': '2.25rem',
+              '--rdp-day-width': '2.25rem',
+              '--rdp-disabled-opacity': '0.3',
+            } as React.CSSProperties
+          }
+        >
+          <DayPicker
+            mode="single"
+            selected={dataSelecionada}
+            onSelect={handleSelecionarData}
+            locale={ptBR}
+            disabled={[ehDesabilitado, { before: hoje }, { after: addDays(hoje, 60) }]}
+            startMonth={hoje}
+            endMonth={addDays(hoje, 60)}
+            modifiersClassNames={{
+              selected: '[&>button]:bg-brand [&>button]:text-white [&>button]:border-brand',
+              today: 'font-bold',
+            }}
+          />
+        </div>
       </div>
 
       {dataSelecionada && (

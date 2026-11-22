@@ -1,6 +1,7 @@
 'use client'
 
-import { useFormState, useFormStatus } from 'react-dom'
+import { useActionState } from 'react'
+import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
 import { inscreverEmEvento, type EstadoFormAgendamento } from '@/lib/actions/booking'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,7 +20,7 @@ interface EventoInscricaoFormProps {
 }
 
 function BotaoSubmit() {
-  const { pending } = useFormStatus()
+  const pending = useFormPending()
   return (
     <Button type="submit" disabled={pending} className="w-full bg-brand hover:bg-brand-hover">
       {pending ? (
@@ -41,7 +42,7 @@ export function EventoInscricaoForm({
   horaFim,
   ocorrencias,
 }: EventoInscricaoFormProps) {
-  const [estado, action] = useFormState(
+  const [estado, action] = useActionState(
     inscreverEmEvento as (estado: EstadoFormAgendamento, formData: FormData) => Promise<EstadoFormAgendamento>,
     null
   )
@@ -57,7 +58,7 @@ export function EventoInscricaoForm({
   }
 
   return (
-    <form action={action} className="space-y-5">
+    <FormSemReset action={action} className="space-y-5">
       <input type="hidden" name="evento_id" value={eventoId} />
 
       {/* Seleção de data */}
@@ -182,6 +183,6 @@ export function EventoInscricaoForm({
       )}
 
       {ocorrenciasDisponiveis.length > 0 && <BotaoSubmit />}
-    </form>
+    </FormSemReset>
   )
 }

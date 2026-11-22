@@ -108,7 +108,7 @@ describe('criarRecado', () => {
       prioridade: 'normal',
     })
     const resultado = await criarRecado(null, fd)
-    expect(resultado).toBeNull()
+    expect(resultado).toEqual({ ok: true })
   })
 
   it('cria recado urgente fixado com sucesso', async () => {
@@ -120,7 +120,7 @@ describe('criarRecado', () => {
       fixado: 'on',
     })
     const resultado = await criarRecado(null, fd)
-    expect(resultado).toBeNull()
+    expect(resultado).toEqual({ ok: true })
   })
 
   it('usa prioridade "normal" como padrão quando não informada', async () => {
@@ -130,7 +130,7 @@ describe('criarRecado', () => {
       conteudo: 'Informação de rotina',
     })
     const resultado = await criarRecado(null, fd)
-    expect(resultado).toBeNull()
+    expect(resultado).toEqual({ ok: true })
   })
 
   it('retorna erro quando DB falha', async () => {
@@ -174,7 +174,7 @@ describe('editarRecado', () => {
       fixado: 'on',
     })
     const resultado = await editarRecado('rec-1', null, fd)
-    expect(resultado).toBeNull()
+    expect(resultado).toEqual({ ok: true })
   })
 
   it('retorna erro de validação para título muito curto', async () => {
@@ -196,7 +196,7 @@ describe('editarRecado', () => {
     // Sem 'fixado: on' → fixado não será 'on' → coerce.boolean() → false
     const fd = makeFormData({ titulo: 'Aviso', conteudo: 'Conteúdo' })
     const resultado = await editarRecado('rec-1', null, fd)
-    expect(resultado).toBeNull()
+    expect(resultado).toEqual({ ok: true })
   })
 })
 
@@ -274,6 +274,6 @@ describe('verificarAdmin em recados — whitelist', () => {
     mockDb.insert.mockReturnValue(mkInsertOk())
     const fd = makeFormData({ titulo: 'Aviso', conteudo: 'Texto válido' })
     const resultado = await criarRecado(null, fd)
-    expect(resultado).toBeNull()
+    expect(resultado).toEqual({ ok: true })
   })
 })

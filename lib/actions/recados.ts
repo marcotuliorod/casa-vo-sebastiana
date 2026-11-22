@@ -14,7 +14,8 @@ const schemaRecado = z.object({
   fixado:    z.coerce.boolean().default(false),
 })
 
-export type EstadoFormRecado = { erro?: string; campo?: string } | null
+// `ok: true` no sucesso: objeto novo a cada envio, para o useActionState mudar de estado
+export type EstadoFormRecado = { erro?: string; campo?: string; ok?: boolean } | null
 
 function revalidar() {
   revalidatePath('/admin/recados')
@@ -47,7 +48,7 @@ export async function criarRecado(
   }
 
   revalidar()
-  return null
+  return { ok: true }
 }
 
 export async function editarRecado(
@@ -80,7 +81,7 @@ export async function editarRecado(
   }
 
   revalidar()
-  return null
+  return { ok: true }
 }
 
 export async function excluirRecado(id: string): Promise<{ erro?: string }> {

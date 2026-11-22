@@ -1,7 +1,7 @@
 'use client'
 
-import { useFormState, useFormStatus } from 'react-dom'
-import { useTransition, useEffect, useState } from 'react'
+import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
+import { useActionState, useTransition, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   criarMedium,
@@ -23,7 +23,7 @@ interface MediunsManagerProps {
 }
 
 function SubmitButton({ label = 'Cadastrar médium' }: { label?: string }) {
-  const { pending } = useFormStatus()
+  const pending = useFormPending()
   return (
     <Button type="submit" disabled={pending} className="bg-brand hover:bg-brand-hover">
       {pending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
@@ -58,13 +58,13 @@ function LinhaMedium({ medium }: { medium: Medium }) {
   const [erroExcluir, setErroExcluir] = useState<string | null>(null)
 
   const editarComId = editarMedium.bind(null, medium.id)
-  const [estadoEditar, actionEditar] = useFormState(
+  const [estadoEditar, actionEditar] = useActionState(
     editarComId as (estado: EstadoFormMedium, formData: FormData) => Promise<EstadoFormMedium>,
     null
   )
 
   useEffect(() => {
-    if (estadoEditar === null && editando) {
+    if (estadoEditar?.ok && editando) {
       setEditando(false)
       router.refresh()
     }
@@ -196,7 +196,7 @@ function LinhaMedium({ medium }: { medium: Medium }) {
       {editando && (
         <AdminCardSub>
           <p className="text-xs font-medium text-gray-600 uppercase mb-3">Editar médium</p>
-          <form action={actionEditar} className="space-y-3">
+          <FormSemReset action={actionEditar} className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label htmlFor={`nome-${medium.id}`} className="text-xs">Nome *</Label>
@@ -245,7 +245,7 @@ function LinhaMedium({ medium }: { medium: Medium }) {
                 Cancelar
               </Button>
             </div>
-          </form>
+          </FormSemReset>
         </AdminCardSub>
       )}
     </div>
@@ -254,7 +254,7 @@ function LinhaMedium({ medium }: { medium: Medium }) {
 
 export function MediunsManager({ mediuns }: MediunsManagerProps) {
   const router = useRouter()
-  const [estado, action] = useFormState(criarMedium, null)
+  const [estado, action] = useActionState(criarMedium, null)
 
   useEffect(() => {
     if (estado && !estado.erro) {
@@ -267,7 +267,7 @@ export function MediunsManager({ mediuns }: MediunsManagerProps) {
       {/* Formulário de cadastro */}
       <div className="bg-white rounded-xl border p-5">
         <h2 className="text-base font-semibold text-gray-800 mb-4">Adicionar médium</h2>
-        <form action={action} className="space-y-4">
+        <FormSemReset action={action} limparApos={estado && !estado.erro ? estado : null} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="nome">Nome completo *</Label>
@@ -298,7 +298,7 @@ export function MediunsManager({ mediuns }: MediunsManagerProps) {
           )}
 
           <SubmitButton />
-        </form>
+        </FormSemReset>
       </div>
 
       {/* Lista de médiuns */}
