@@ -13,7 +13,7 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 | Banco de dados | Postgres 17 self-hosted (Docker) + Drizzle ORM |
 | Autenticação | Auth.js (NextAuth v5) — Magic Link via Resend |
 | WhatsApp | Z-API (padrão) ou Twilio (Strategy Pattern) |
-| Deploy | Docker Compose self-hosted (app + Postgres + Caddy + cron + backup) |
+| Deploy | Docker Compose self-hosted (app + Postgres + cron + backup), atrás do Traefik em produção (Caddy opcional para servidor dedicado) |
 | Datas | date-fns + date-fns-tz (America/Sao_Paulo) |
 | Calendário | react-day-picker |
 | Ícones | Lucide React |
@@ -161,8 +161,9 @@ Acesse: https://localhost (certificado local automático do Caddy)
 | `AUTH_SECRET` | Sim | Chave de assinatura das sessões JWT do Auth.js |
 | `AUTH_URL` | Sim | URL pública do site — evita links quebrados atrás de proxy |
 | `RESEND_API_KEY` | Sim | API key do Resend, usada pelo Auth.js para enviar o magic link |
-| `AUTH_EMAIL_FROM` | Sim | Remetente do e-mail de login |
-| `DOMAIN` | Não | Domínio servido pelo Caddy (TLS automático); `localhost` para testes locais |
+| `AUTH_EMAIL_FROM` | Sim | Remetente do e-mail de login — o domínio precisa estar **verificado no Resend**, senão o envio do magic link falha |
+| `DOMAIN` | Sim em produção | Domínio público do site, usado pelo Traefik (`Host(${DOMAIN})`) ou pelo Caddy; `localhost` para testes locais |
+| `COMPOSE_FILE` | Em produção | `docker-compose.yml:docker-compose.traefik.yml` para publicar via Traefik (VPS atual); omitir para usar o Caddy |
 | `WHATSAPP_PROVIDER` | Sim | `zapi` ou `twilio` |
 | `ZAPI_INSTANCE_ID` / `ZAPI_INSTANCE_TOKEN` / `ZAPI_CLIENT_TOKEN` | Se PROVIDER=zapi | Credenciais Z-API |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | Se PROVIDER=twilio | Credenciais Twilio |
@@ -382,9 +383,9 @@ casa-vo-sebastiana/
 │
 ├── docker/
 │   ├── postgres/init.sql             # Extensions criadas no primeiro boot do container
-│   ├── caddy/Caddyfile               # Reverse proxy + TLS automático
+│   ├── caddy/Caddyfile               # Reverse proxy + TLS (opção para servidor dedicado, sem Traefik)
 │   ├── cron/                         # Container que dispara /api/cron/lembretes
-│   └── backup/backup.sh              # pg_dump diário com retenção
+│   └── backup/backup.sh              # pg_dump diário às 03:00 BRT com retenção de 14 dias
 │
 ├── __tests__/                         # Vitest: actions, queries, utils, templates, componentes
 │   └── db/                            # Testes de integração contra Postgres real (precisam de DATABASE_URL)
@@ -392,7 +393,8 @@ casa-vo-sebastiana/
 ├── .github/workflows/ci.yml          # Type-check + lint + test (com Postgres real) em cada push/PR
 ├── middleware.ts                     # Protege /admin/* → sessão Auth.js válida + ADMIN_EMAILS
 ├── Dockerfile                        # Build standalone do Next.js
-├── docker-compose.yml                # app + postgres + proxy + cron + backup
+├── docker-compose.yml                # app + postgres + proxy (Caddy) + cron + backup
+├── docker-compose.traefik.yml        # Produção: desativa o Caddy e publica o app no Traefik
 ├── drizzle.config.ts                 # Config do drizzle-kit
 ├── next.config.mjs                   # output: standalone, headers de segurança, Server Actions
 ├── tailwind.config.ts
@@ -513,15 +515,15 @@ docker compose exec -T postgres psql -U app -d casa_vo_sebastiana < drizzle/seed
 
 > Não copie o `docker-compose.override.yml` (ignorado pelo git) para o servidor: ele publica a porta 5432 do Postgres.
 
-O Caddy (serviço `proxy`) obtém certificado TLS automaticamente via Let's Encrypt para o `DOMAIN` configurado — só a porta 80/443 do proxy fica exposta; Postgres nunca é acessível de fora.
-
-**Host que já tem Traefik (ex.: VPS da Hostinger):** o Traefik já ocupa 80/443, então o Caddy não pode subir. Adicione ao `.env`:
+**Proxy de produção: Traefik.** A VPS de produção (Hostinger) é compartilhada e já tem um Traefik ocupando as portas 80/443, então o Caddy do Compose não sobe lá. O `.env` de produção precisa ter:
 
 ```bash
 COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml
 ```
 
-Isso desativa o `proxy` e publica o `app` por labels do Traefik (`docker-compose.traefik.yml`, router `Host(${DOMAIN})`, certresolver `letsencrypt`). O registro DNS de `DOMAIN` precisa apontar para o servidor antes do primeiro acesso, para o certificado ser emitido.
+Isso desativa o `proxy` (Caddy) e publica o `app` por labels do Traefik (`docker-compose.traefik.yml`, router `Host(${DOMAIN})`, entrypoint `websecure`, certresolver `letsencrypt`). O registro DNS de `DOMAIN` precisa apontar para o servidor antes do primeiro acesso, para o certificado ser emitido. Postgres nunca é exposto para fora.
+
+**Alternativa: servidor dedicado sem Traefik.** Sem a variável `COMPOSE_FILE`, o Compose sobe o Caddy (serviço `proxy`), que ocupa 80/443 e obtém o certificado TLS do `DOMAIN` automaticamente via Let's Encrypt.
 
 ### 4. Deploy de atualizações
 
@@ -531,10 +533,44 @@ git pull && docker compose up -d --build && docker compose run --rm migrate
 
 ### 5. Backups
 
-O container `backup` roda `pg_dump` diário com retenção de 14 dias, salvo no volume `backup_data` — **na própria máquina**. Copie os dumps para fora do servidor (ex.: `rclone` em um cron do host, ou snapshot da VPS), senão uma falha do servidor leva o banco e os backups juntos. Teste o restore periodicamente:
+O container `backup` (`docker/backup/backup.sh`) roda `pg_dump --format=custom` **todo dia às 03:00 (America/Sao_Paulo; 06:00 UTC)** e mantém os dumps dos últimos 14 dias no volume `backup_data`. Detalhes:
+
+- Ao subir o container, faz um dump imediato só se não houver nenhum das últimas 24h (deploys e restarts não geram dumps extras).
+- O dump é gravado como `.tmp` e só vira `backup_AAAAMMDD_HHMMSS.dump` se o `pg_dump` terminar com sucesso; em falha o parcial é apagado e o erro aparece em `docker compose logs backup`.
+- Dump manual a qualquer momento: `docker compose exec backup sh /backup.sh --once`.
+
+**Listar e copiar um dump para o host:**
+
 ```bash
-docker compose exec -T postgres pg_restore -U app -d casa_vo_sebastiana --clean < seu_backup.dump
+docker compose exec backup ls -lh /backups
+docker compose cp backup:/backups/backup_AAAAMMDD_HHMMSS.dump .
 ```
+
+**Restaurar — sempre primeiro num banco temporário**, para conferir o dump antes de mexer no banco de produção:
+
+```bash
+# 1. restaura num banco descartável e confere os dados
+docker compose exec -T postgres createdb -U app restore_teste
+docker compose exec -T postgres pg_restore -U app -d restore_teste --no-owner < backup_AAAAMMDD_HHMMSS.dump
+docker compose exec -T postgres psql -U app -d restore_teste -c "select count(*) from agendamentos"
+
+# 2. só depois, se for mesmo para substituir produção (pare o app antes)
+docker compose stop app cron
+docker compose exec -T postgres pg_restore -U app -d casa_vo_sebastiana --clean --if-exists --no-owner < backup_AAAAMMDD_HHMMSS.dump
+docker compose start app cron
+
+# 3. apaga o banco temporário
+docker compose exec -T postgres dropdb -U app restore_teste
+```
+
+**Cópia para fora do servidor (obrigatória).** O volume `backup_data` fica na própria VPS — uma falha do servidor leva o banco e os backups juntos. Configure o [rclone](https://rclone.org/) no host (`rclone config`, gera `~/.config/rclone/rclone.conf` com o remoto, ex.: Backblaze B2, S3, Google Drive) e agende no `crontab -e` do host, depois do horário do dump:
+
+```bash
+# 04:00 BRT (07:00 UTC; ajuste ao fuso do host) — copia os dumps para o remoto
+0 7 * * * docker run --rm -v <projeto>_backup_data:/data:ro -v ~/.config/rclone:/config/rclone rclone/rclone copy /data <remoto>:<bucket>/casa-vo
+```
+
+`<projeto>` é o nome do projeto Compose (`COMPOSE_PROJECT_NAME`, por padrão o nome da pasta); confira o nome exato do volume com `docker volume ls | grep backup_data`. `copy` não apaga nada no remoto — configure a retenção lá (ex.: lifecycle rule do bucket). Teste o restore a partir de uma cópia remota de tempos em tempos.
 
 ---
 
