@@ -39,7 +39,7 @@ export async function criarAgendamento(
 
   const resultado = schemaCriarAgendamento.safeParse(dados)
   if (!resultado.success) {
-    const primeiroErro = resultado.error.errors[0]
+    const primeiroErro = resultado.error.issues[0]
     return { erro: primeiroErro.message, campo: String(primeiroErro.path[0]) }
   }
 
@@ -225,7 +225,7 @@ export async function inscreverEmEvento(
   const resultado = schemaInscreverEvento.safeParse(dados)
 
   if (!resultado.success) {
-    const primeiroErro = resultado.error.errors[0]
+    const primeiroErro = resultado.error.issues[0]
     return { erro: primeiroErro.message, campo: String(primeiroErro.path[0]) }
   }
 

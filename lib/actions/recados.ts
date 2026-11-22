@@ -36,7 +36,7 @@ export async function criarRecado(
   })
 
   if (!parsed.success) {
-    const first = parsed.error.errors[0]
+    const first = parsed.error.issues[0]
     return { erro: first.message, campo: String(first.path[0] ?? '') }
   }
 
@@ -66,7 +66,7 @@ export async function editarRecado(
   })
 
   if (!parsed.success) {
-    const first = parsed.error.errors[0]
+    const first = parsed.error.issues[0]
     return { erro: first.message, campo: String(first.path[0] ?? '') }
   }
 
