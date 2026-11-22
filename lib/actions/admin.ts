@@ -9,10 +9,9 @@ import { db } from '@/lib/db'
 import { agendamentos, clientes, datasBloqueadas, eventos, gradeHorarios, mediuns } from '@/lib/db/schema'
 import { mensagemErro, codigoPg } from '@/lib/db/errors'
 import { verificarAdmin } from '@/lib/auth/admin'
-import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
-import { mensagemAtribuicaoMedium, mensagemCancelamento } from '@/lib/whatsapp/templates'
-import { enviarWhatsAppComFila } from '@/lib/whatsapp/envio'
-import { normalizarTelefone } from '@/lib/utils/phone'
+import { emailAtribuicaoMedium, emailCancelamento } from '@/lib/email/templates'
+import { enviarEmailComFila } from '@/lib/email/envio'
+import { listaDeEmails } from '@/lib/email/cliente'
 import type { AppointmentStatus } from '@/types/database'
 
 // Atualizar status de um agendamento
@@ -29,8 +28,8 @@ export async function atualizarStatusAgendamento(
     return { erro: mensagemErro(erro) }
   }
 
-  // GAP-01: notificar consulente por WhatsApp quando admin cancela.
-  // Falha de envio vira item da fila (whatsapp_queue), nunca impede o cancelamento.
+  // GAP-01: avisar o consulente por e-mail quando o admin cancela.
+  // Falha de envio vira item da fila (email_queue), nunca impede o cancelamento.
   if (novoStatus === 'cancelado') {
     try {
       const ag = await db.query.agendamentos.findFirst({
@@ -40,13 +39,13 @@ export async function atualizarStatusAgendamento(
 
       if (ag) {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-        await enviarWhatsAppComFila({
+        await enviarEmailComFila({
           agendamentoId: ag.id,
-          telefone: normalizarTelefone(ag.cliente.telefone),
-          mensagem: mensagemCancelamento({
+          para: listaDeEmails(ag.cliente.email),
+          email: emailCancelamento({
             nomeCliente: ag.cliente.nome,
             dataAgendada: ag.dataAgendada,
-            horaInicio: ag.horaInicio,
+            horaInicio: ag.horaInicio.slice(0, 5),
             tokenPublico: ag.tokenPublico,
             baseUrl,
           }),
@@ -55,7 +54,7 @@ export async function atualizarStatusAgendamento(
         })
       }
     } catch (err) {
-      console.error('[WhatsApp] Falha ao preparar mensagem de cancelamento:', err)
+      console.error('[E-mail] Falha ao preparar e-mail de cancelamento:', err)
     }
   }
 
@@ -229,6 +228,7 @@ const schemaMedium = z.object({
   nome: z.string().min(2, 'Nome obrigatório'),
   especialidade: z.string().optional(),
   telefone: z.string().optional(),
+  email: z.string().trim().toLowerCase().email('E-mail inválido').optional().or(z.literal('')),
 })
 
 export async function criarMedium(
@@ -245,13 +245,14 @@ export async function criarMedium(
     return { erro: resultado.error.issues[0].message }
   }
 
-  const { nome, especialidade, telefone } = resultado.data
+  const { nome, especialidade, telefone, email } = resultado.data
 
   try {
     await db.insert(mediuns).values({
       nome,
       especialidade: especialidade || null,
       telefone: telefone || null,
+      email: email || null,
     })
   } catch (erro) {
     return { erro: mensagemErro(erro) }
@@ -291,7 +292,8 @@ export async function atribuirMedium(
     return { erro: mensagemErro(erro) }
   }
 
-  // US-27: notificar médium via WhatsApp ao ser atribuído
+  // US-27: avisar o médium por e-mail ao ser atribuído (se tiver e-mail cadastrado).
+  // Falha vira item da fila; não impede a atribuição.
   if (mediumId) {
     try {
       const [ag, medium] = await Promise.all([
@@ -302,22 +304,23 @@ export async function atribuirMedium(
         db.query.mediuns.findFirst({ where: eq(mediuns.id, mediumId) }),
       ])
 
-      if (ag && medium?.telefone) {
-        const provedor = getProvedorWhatsApp()
-        const telefoneNormalizado = normalizarTelefone(medium.telefone)
-        await provedor.enviarMensagem({
-          para: telefoneNormalizado,
-          corpo: mensagemAtribuicaoMedium({
+      if (ag && medium?.email) {
+        await enviarEmailComFila({
+          agendamentoId: ag.id,
+          para: [medium.email],
+          email: emailAtribuicaoMedium({
             nomeMedium: medium.nome,
             nomeCliente: ag.cliente.nome,
             dataAgendada: ag.dataAgendada,
-            horaInicio: ag.horaInicio,
-            horaFim: ag.horaFim,
+            horaInicio: ag.horaInicio.slice(0, 5),
+            horaFim: ag.horaFim.slice(0, 5),
           }),
+          evento: null,
+          tipo: 'medium',
         })
       }
-    } catch {
-      // WhatsApp falhou — não impede a atribuição
+    } catch (err) {
+      console.error('[E-mail] Falha ao avisar médium:', err)
     }
   }
 
@@ -646,12 +649,17 @@ export async function editarMedium(
   const resultado = schemaMedium.safeParse(dados)
   if (!resultado.success) return { erro: resultado.error.issues[0].message }
 
-  const { nome, especialidade, telefone } = resultado.data
+  const { nome, especialidade, telefone, email } = resultado.data
 
   try {
     await db
       .update(mediuns)
-      .set({ nome, especialidade: especialidade || null, telefone: telefone || null })
+      .set({
+        nome,
+        especialidade: especialidade || null,
+        telefone: telefone || null,
+        email: email || null,
+      })
       .where(eq(mediuns.id, id))
   } catch (erro) {
     return { erro: mensagemErro(erro) }

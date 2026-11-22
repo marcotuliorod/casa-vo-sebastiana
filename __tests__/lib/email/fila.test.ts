@@ -4,7 +4,7 @@ import {
   horaDeLembretesHorario,
   motivoDescarte,
   proximoRetry,
-} from '@/lib/whatsapp/fila'
+} from '@/lib/email/fila'
 
 // 2026-11-22 15:00 UTC = 12:00 em Brasília
 const AGORA = new Date('2026-11-22T15:00:00Z')

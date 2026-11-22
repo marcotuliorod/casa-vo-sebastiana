@@ -42,7 +42,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
           <div className="mb-6 rounded-xl bg-brand-areia border border-brand-muted/40 p-4 text-center">
             <p className="font-semibold text-brand-dark">🕐 Agendamento recebido!</p>
             <p className="text-sm text-brand mt-1">
-              Aguardando confirmação da Casa. Você receberá uma mensagem no WhatsApp em breve.
+              Aguardando confirmação da Casa. Enviamos os detalhes para o seu e-mail.
             </p>
           </div>
         )}
@@ -53,7 +53,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
             <CheckCircle2 className="h-8 w-8 text-brand-success mx-auto mb-2" />
             <p className="font-semibold text-gray-800">Agendamento confirmado!</p>
             <p className="text-sm text-gray-600">
-              Você receberá uma confirmação via WhatsApp.
+              Você receberá um lembrete por e-mail na véspera.
             </p>
           </div>
         )}

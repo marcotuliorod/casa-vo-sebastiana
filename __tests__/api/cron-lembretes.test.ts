@@ -20,12 +20,17 @@ vi.mock('@/lib/db', () => ({
 vi.mock('@/lib/queries/appointments', () => ({
   getAgendamentosParaLembrete: vi.fn(async () => []),
 }))
-vi.mock('@/lib/whatsapp/factory', () => ({ getProvedorWhatsApp: vi.fn() }))
+// Envio falso; listaDeEmails é o real. emailConfigurado segue as variáveis de ambiente.
+vi.mock('@/lib/email/cliente', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/email/cliente')>()),
+  enviarEmail: vi.fn(),
+}))
 
 import { GET } from '@/app/api/cron/lembretes/route'
-import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
+import { enviarEmail } from '@/lib/email/cliente'
 import { getAgendamentosParaLembrete } from '@/lib/queries/appointments'
 
+const mockEnviarEmail = vi.mocked(enviarEmail)
 const SEGREDO = 'x'.repeat(40)
 const req = () =>
   new Request('http://app/api/cron/lembretes', { headers: { authorization: `Bearer ${SEGREDO}` } }) as never
@@ -37,8 +42,10 @@ function itemFila(over: Partial<Record<string, unknown>> = {}, ag: { agStatus: s
     item: {
       id: 'q1',
       agendamentoId: 'a1',
-      telefone: '+5511999990000',
-      mensagem: 'oi',
+      destinatarios: 'maria@exemplo.com, outra@exemplo.com',
+      assunto: 'Agendamento recebido',
+      texto: 'oi',
+      html: '<p>oi</p>',
       tipo: 'confirmacao',
       tentativas: 0,
       maxTentativas: 3,
@@ -51,47 +58,91 @@ function itemFila(over: Partial<Record<string, unknown>> = {}, ag: { agStatus: s
   }
 }
 
+function lembreteDeAmanha(email: string | null) {
+  return {
+    id: 'a2',
+    data_agendada: '2026-11-23',
+    hora_inicio: '09:00:00',
+    token_publico: 'tok',
+    clientes: { nome: 'Maria', telefone: '+5511999990000', email },
+  }
+}
+
+function configurarEmail(ativo: boolean) {
+  if (ativo) {
+    process.env.RESEND_API_KEY = 're_teste'
+    process.env.EMAIL_FROM = 'Casa <contato@exemplo.com>'
+  } else {
+    delete process.env.RESEND_API_KEY
+    delete process.env.EMAIL_FROM
+    delete process.env.AUTH_EMAIL_FROM
+  }
+}
+
 beforeEach(() => {
   vi.useFakeTimers()
   vi.setSystemTime(AGORA)
   process.env.CRON_SECRET = SEGREDO
   vi.clearAllMocks()
+  configurarEmail(true)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.mocked(console.error).mockRestore()
+  vi.mocked(console.warn).mockRestore()
+})
 
 describe('GET /api/cron/lembretes', () => {
-  it('processa a fila mesmo sem agendamentos para amanhã (sem retorno antecipado)', async () => {
-    const enviarMensagem = vi.fn(async () => ({ sucesso: true, idMensagemProvedor: 'm1' }))
-    vi.mocked(getProvedorWhatsApp).mockReturnValue({ nome: 'zapi', enviarMensagem } as never)
+  it('reenvia item da fila para todos os destinatários e grava log', async () => {
+    mockEnviarEmail.mockResolvedValue({ sucesso: true, idMensagem: 'm1' })
     filaMock.mockResolvedValue([itemFila()])
 
     const res = await (await GET(req())).json()
 
-    expect(enviarMensagem).toHaveBeenCalledOnce()
+    expect(mockEnviarEmail).toHaveBeenCalledWith(['maria@exemplo.com', 'outra@exemplo.com'], {
+      assunto: 'Agendamento recebido',
+      texto: 'oi',
+      html: '<p>oi</p>',
+    })
     expect(res.retry).toMatchObject({ processados: 1, total: 1 })
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ tentativas: 1, status: 'enviado' }))
     expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({ agendamentoId: 'a1', evento: 'confirmacao_agendamento', status: 'enviado' })
+      expect.objectContaining({
+        agendamentoId: 'a1',
+        evento: 'confirmacao_agendamento',
+        paraEmail: 'maria@exemplo.com, outra@exemplo.com',
+        idMensagemProvedor: 'm1',
+        status: 'enviado',
+      })
     )
   })
 
-  it('sem provedor não consome tentativas da fila', async () => {
-    vi.mocked(getProvedorWhatsApp).mockImplementation(() => {
-      throw new Error('credenciais ausentes')
-    })
+  it('não grava log de item da Casa (tipo admin)', async () => {
+    mockEnviarEmail.mockResolvedValue({ sucesso: true })
+    filaMock.mockResolvedValue([itemFila({ tipo: 'admin' })])
+
+    await GET(req())
+
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ status: 'enviado' }))
+    expect(insertValues).not.toHaveBeenCalled()
+  })
+
+  it('sem e-mail configurado não envia nem consome tentativas da fila', async () => {
+    configurarEmail(false)
     filaMock.mockResolvedValue([itemFila()])
 
     const res = await (await GET(req())).json()
 
+    expect(mockEnviarEmail).not.toHaveBeenCalled()
     expect(updateSet).not.toHaveBeenCalled()
-    expect(res.whatsapp_disponivel).toBe(false)
+    expect(res.email_disponivel).toBe(false)
     expect(res.retry).toMatchObject({ processados: 0, falhas: 0, descartados: 0 })
   })
 
-  it('descarta item de agendamento cancelado mesmo sem provedor', async () => {
-    vi.mocked(getProvedorWhatsApp).mockImplementation(() => {
-      throw new Error('credenciais ausentes')
-    })
+  it('descarta item de agendamento cancelado mesmo sem e-mail configurado', async () => {
+    configurarEmail(false)
     filaMock.mockResolvedValue([itemFila({}, { agStatus: 'cancelado', agData: '2026-11-25' })])
 
     const res = await (await GET(req())).json()
@@ -100,9 +151,18 @@ describe('GET /api/cron/lembretes', () => {
     expect(res.retry.descartados).toBe(1)
   })
 
+  it('erro de rede no reenvio conta como tentativa', async () => {
+    mockEnviarEmail.mockRejectedValue(new Error('ECONNRESET'))
+    filaMock.mockResolvedValue([itemFila()])
+
+    const res = await (await GET(req())).json()
+
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ tentativas: 1, status: 'pendente' }))
+    expect(res.retry.falhas).toBe(1)
+  })
+
   it('marca como falhou ao esgotar maxTentativas', async () => {
-    const enviarMensagem = vi.fn(async () => ({ sucesso: false, erro: 'x' }))
-    vi.mocked(getProvedorWhatsApp).mockReturnValue({ nome: 'zapi', enviarMensagem } as never)
+    mockEnviarEmail.mockResolvedValue({ sucesso: false, erro: 'x' })
     filaMock.mockResolvedValue([itemFila({ tentativas: 2, maxTentativas: 3 })])
 
     await GET(req())
@@ -110,9 +170,49 @@ describe('GET /api/cron/lembretes', () => {
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ tentativas: 3, status: 'falhou' }))
   })
 
+  it('envia o lembrete de amanhã por e-mail, grava log e marca como enviado', async () => {
+    mockEnviarEmail.mockResolvedValue({ sucesso: true, idMensagem: 'm2' })
+    vi.mocked(getAgendamentosParaLembrete).mockResolvedValue([lembreteDeAmanha('maria@exemplo.com')] as never)
+    filaMock.mockResolvedValue([])
+
+    const res = await (await GET(req())).json()
+
+    expect(mockEnviarEmail).toHaveBeenCalledWith(
+      ['maria@exemplo.com'],
+      expect.objectContaining({ assunto: expect.stringContaining('amanhã') })
+    )
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ agendamentoId: 'a2', evento: 'lembrete_24h', status: 'enviado' })
+    )
+    expect(updateSet).toHaveBeenCalledWith({ lembreteEnviado: true })
+    expect(res.horario).toMatchObject({ processados: 1, falhas: 0 })
+  })
+
+  it('pula consulente sem e-mail (cadastro antigo) sem marcar o lembrete', async () => {
+    vi.mocked(getAgendamentosParaLembrete).mockResolvedValue([lembreteDeAmanha(null)] as never)
+    filaMock.mockResolvedValue([])
+
+    const res = await (await GET(req())).json()
+
+    expect(mockEnviarEmail).not.toHaveBeenCalled()
+    expect(updateSet).not.toHaveBeenCalled()
+    expect(res.sem_email).toBe(1)
+  })
+
+  it('lembrete recusado pelo Resend não é marcado como enviado', async () => {
+    mockEnviarEmail.mockResolvedValue({ sucesso: false, erro: 'domínio não verificado' })
+    vi.mocked(getAgendamentosParaLembrete).mockResolvedValue([lembreteDeAmanha('maria@exemplo.com')] as never)
+    filaMock.mockResolvedValue([])
+
+    const res = await (await GET(req())).json()
+
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'falhou' }))
+    expect(updateSet).not.toHaveBeenCalledWith({ lembreteEnviado: true })
+    expect(res.horario).toMatchObject({ processados: 0, falhas: 1 })
+  })
+
   it('não busca lembretes de horário antes das 09:00 de Brasília', async () => {
     vi.setSystemTime(new Date('2026-11-22T10:00:00Z')) // 07:00 BRT
-    vi.mocked(getProvedorWhatsApp).mockReturnValue({ nome: 'zapi', enviarMensagem: vi.fn() } as never)
     filaMock.mockResolvedValue([])
 
     const res = await (await GET(req())).json()

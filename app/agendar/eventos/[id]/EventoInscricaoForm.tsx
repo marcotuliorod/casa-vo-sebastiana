@@ -129,7 +129,7 @@ export function EventoInscricaoForm({
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="telefone">WhatsApp *</Label>
+        <Label htmlFor="telefone">Telefone *</Label>
         <Input
           id="telefone"
           name="telefone"
@@ -138,26 +138,27 @@ export function EventoInscricaoForm({
           autoComplete="tel"
           required
         />
-        <p className="text-xs text-gray-400">
-          Você receberá a confirmação por WhatsApp
-        </p>
         {estado?.campo === 'telefone' && (
           <p className="text-xs text-brand-error">{estado.erro}</p>
         )}
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="email">
-          E-mail
-          <span className="text-gray-400 font-normal"> (opcional)</span>
-        </Label>
+        <Label htmlFor="email">E-mail *</Label>
         <Input
           id="email"
           name="email"
           type="email"
           placeholder="seu@email.com"
           autoComplete="email"
+          required
         />
+        <p className="text-xs text-gray-400">
+          Você receberá a confirmação por e-mail
+        </p>
+        {estado?.campo === 'email' && (
+          <p className="text-xs text-brand-error">{estado.erro}</p>
+        )}
       </div>
 
       <div className="space-y-1">

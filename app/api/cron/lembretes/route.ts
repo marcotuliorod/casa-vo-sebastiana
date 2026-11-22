@@ -1,18 +1,48 @@
 // Cron job (de hora em hora): lembretes de horário (a partir das 09:00 BRT),
-// lembretes de eventos e reenvio da fila whatsapp_queue.
+// lembretes de eventos e reenvio da fila email_queue.
 // Disparado pelo container `cron` do Docker Compose (ver docker/cron/)
 
 import { NextRequest, NextResponse } from 'next/server'
 import { and, eq, gte, isNotNull, lt, lte } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { agendamentos, logsWhatsapp, whatsappQueue } from '@/lib/db/schema'
+import { agendamentos, emailQueue, logsEmail } from '@/lib/db/schema'
 import { getAgendamentosParaLembrete } from '@/lib/queries/appointments'
-import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
-import { mensagemLembrete24h, mensagemLembreteEvento } from '@/lib/whatsapp/templates'
+import { emailConfigurado, enviarEmail, listaDeEmails, type EmailMontado } from '@/lib/email/cliente'
+import { emailLembrete24h, emailLembreteEvento } from '@/lib/email/templates'
 import { amanha } from '@/lib/utils/date'
 import { formatInTimeZone } from 'date-fns-tz'
 import { parseISO, addHours } from 'date-fns'
-import { eventoLogDoTipo, horaDeLembretesHorario, motivoDescarte, proximoRetry } from '@/lib/whatsapp/fila'
+import { eventoLogDoTipo, horaDeLembretesHorario, motivoDescarte, proximoRetry } from '@/lib/email/fila'
+
+/** Envia um lembrete, grava o log e marca o agendamento. Retorna true se enviou. */
+async function enviarLembrete(agendamentoId: string, para: string, email: EmailMontado): Promise<boolean> {
+  let resultado
+  try {
+    resultado = await enviarEmail([para], email)
+  } catch (err) {
+    console.error('[Cron lembretes] Falha ao enviar lembrete:', err instanceof Error ? err.message : err)
+    return false
+  }
+
+  await db.insert(logsEmail).values({
+    agendamentoId,
+    evento: 'lembrete_24h',
+    paraEmail: para,
+    assunto: email.assunto,
+    idMensagemProvedor: resultado.idMensagem ?? null,
+    status: resultado.sucesso ? 'enviado' : 'falhou',
+    mensagemErro: resultado.erro ?? null,
+  })
+
+  if (!resultado.sucesso) {
+    console.error('[Cron lembretes] Resend recusou lembrete:', resultado.erro)
+    return false
+  }
+
+  // Idempotência: não reenviar no próximo ciclo
+  await db.update(agendamentos).set({ lembreteEnviado: true }).where(eq(agendamentos.id, agendamentoId))
+  return true
+}
 
 export async function GET(request: NextRequest) {
   // Verificar autorização do cron
@@ -37,6 +67,13 @@ export async function GET(request: NextRequest) {
   const dataAmanha = amanha()
   const agoraCron = new Date()
 
+  // Sem RESEND_API_KEY/EMAIL_FROM nada é enviado e nada é marcado:
+  // lembretes e fila ficam para o próximo ciclo (o descarte da fila continua valendo).
+  const emailDisponivel = emailConfigurado()
+  if (!emailDisponivel) {
+    console.error('[Cron lembretes] E-mail não configurado (RESEND_API_KEY/EMAIL_FROM) — envios adiados')
+  }
+
   // O cron roda de hora em hora. Lembretes de horário só a partir das 09:00 BRT;
   // eventos e fila de retry rodam sempre.
   const rodarLembretesHorario = horaDeLembretesHorario(agoraCron)
@@ -54,54 +91,25 @@ export async function GET(request: NextRequest) {
 
   let processados = 0
   let falhas = 0
+  let semEmail = 0
 
-  // BUG-OBS02: getProvedorWhatsApp() pode lançar se credenciais ausentes — não deve crashar o cron.
-  // Sem provedor nada é enviado e nada é marcado: lembretes e fila ficam para o próximo ciclo.
-  let provedor: ReturnType<typeof getProvedorWhatsApp> | null = null
-  try {
-    provedor = getProvedorWhatsApp()
-  } catch (err) {
-    console.error('[Cron lembretes] WhatsApp não disponível — envios adiados:', err instanceof Error ? err.message : err)
-  }
+  if (emailDisponivel) for (const ag of agendamentosLembrete) {
+    // Consulentes antigos (da época do WhatsApp) podem não ter e-mail
+    if (!ag.clientes.email) {
+      semEmail++
+      continue
+    }
 
-  if (provedor) for (const ag of agendamentosLembrete) {
-    const mensagem = mensagemLembrete24h({
+    const email = emailLembrete24h({
       nomeCliente: ag.clientes.nome,
       dataAgendada: ag.data_agendada,
-      horaInicio: ag.hora_inicio,
+      horaInicio: ag.hora_inicio.slice(0, 5),
       tokenPublico: ag.token_publico,
       baseUrl,
     })
 
-    const resultado = await provedor.enviarMensagem({
-      para: ag.clientes.telefone,
-      corpo: mensagem,
-    })
-
-    // Registrar log
-    await db.insert(logsWhatsapp).values({
-      agendamentoId: ag.id,
-      evento: 'lembrete_24h',
-      provedor: provedor.nome,
-      paraTelefone: ag.clientes.telefone,
-      mensagem,
-      idMensagemProvedor: resultado.idMensagemProvedor ?? null,
-      status: resultado.sucesso ? 'enviado' : 'falhou',
-      mensagemErro: resultado.erro ?? null,
-    })
-
-    if (resultado.sucesso) {
-      // Marcar lembrete como enviado (idempotência)
-      await db.update(agendamentos).set({ lembreteEnviado: true }).where(eq(agendamentos.id, ag.id))
-
-      processados++
-    } else {
-      console.error(
-        `[Cron lembretes] Falha ao enviar para ***${ag.clientes.telefone.slice(-4)}:`,
-        resultado.erro
-      )
-      falhas++
-    }
+    if (await enviarLembrete(ag.id, ag.clientes.email, email)) processados++
+    else falhas++
   }
 
   // ─── Lembretes de Eventos (lembrete_horas por evento) ────────────────────────
@@ -123,12 +131,16 @@ export async function GET(request: NextRequest) {
     },
   })
 
-  if (agEventos.length && provedor) {
+  if (agEventos.length && emailDisponivel) {
     const agora = new Date()
 
     for (const ag of agEventos) {
       const evento = ag.evento
       if (!evento) continue
+      if (!ag.cliente.email) {
+        semEmail++
+        continue
+      }
 
       // Calcula quando deve enviar: data_agendada + hora_inicio - lembrete_horas
       const dataHoraEvento = parseISO(`${ag.dataAgendada}T${ag.horaInicio}`)
@@ -137,7 +149,7 @@ export async function GET(request: NextRequest) {
       // Só envia se já passou do momento do lembrete (e ainda não passou o evento)
       if (agora < momentoLembrete || agora > dataHoraEvento) continue
 
-      const mensagem = mensagemLembreteEvento({
+      const email = emailLembreteEvento({
         nomeCliente: ag.cliente.nome,
         tituloEvento: evento.titulo,
         dataEvento: ag.dataAgendada,
@@ -146,32 +158,12 @@ export async function GET(request: NextRequest) {
         baseUrl,
       })
 
-      const resultado = await provedor.enviarMensagem({
-        para: ag.cliente.telefone,
-        corpo: mensagem,
-      })
-
-      await db.insert(logsWhatsapp).values({
-        agendamentoId: ag.id,
-        evento: 'lembrete_24h',
-        provedor: provedor.nome,
-        paraTelefone: ag.cliente.telefone,
-        mensagem,
-        idMensagemProvedor: resultado.idMensagemProvedor ?? null,
-        status: resultado.sucesso ? 'enviado' : 'falhou',
-        mensagemErro: resultado.erro ?? null,
-      })
-
-      if (resultado.sucesso) {
-        await db.update(agendamentos).set({ lembreteEnviado: true }).where(eq(agendamentos.id, ag.id))
-        eventosProcessados++
-      } else {
-        eventosFalhas++
-      }
+      if (await enviarLembrete(ag.id, ag.cliente.email, email)) eventosProcessados++
+      else eventosFalhas++
     }
   }
 
-  // US-16: Processar fila de retry de mensagens com falha
+  // US-16: Processar fila de retry de e-mails com falha
   let retryProcessados = 0
   let retryFalhas = 0
   let retryDescartados = 0
@@ -179,23 +171,23 @@ export async function GET(request: NextRequest) {
   const agora = new Date()
   const fila = await db
     .select({
-      item: whatsappQueue,
+      item: emailQueue,
       agStatus: agendamentos.status,
       agData: agendamentos.dataAgendada,
     })
-    .from(whatsappQueue)
-    .leftJoin(agendamentos, eq(whatsappQueue.agendamentoId, agendamentos.id))
+    .from(emailQueue)
+    .leftJoin(agendamentos, eq(emailQueue.agendamentoId, agendamentos.id))
     .where(
       and(
-        eq(whatsappQueue.status, 'pendente'),
-        lte(whatsappQueue.proximoRetry, agora),
-        lt(whatsappQueue.tentativas, whatsappQueue.maxTentativas)
+        eq(emailQueue.status, 'pendente'),
+        lte(emailQueue.proximoRetry, agora),
+        lt(emailQueue.tentativas, emailQueue.maxTentativas)
       )
     )
 
   for (const { item, agStatus, agData } of fila) {
-    // Descarta mensagens que perderam o sentido (antigas, de agendamento cancelado
-    // ou já passado) — mesmo sem provedor, para não acumular envios atrasados.
+    // Descarta e-mails que perderam o sentido (antigos, de agendamento cancelado
+    // ou já passado) — mesmo sem e-mail configurado, para não acumular envios atrasados.
     const motivo = motivoDescarte(
       {
         tipo: item.tipo,
@@ -205,18 +197,21 @@ export async function GET(request: NextRequest) {
       agora
     )
     if (motivo) {
-      await db.update(whatsappQueue).set({ status: 'falhou' }).where(eq(whatsappQueue.id, item.id))
+      await db.update(emailQueue).set({ status: 'falhou' }).where(eq(emailQueue.id, item.id))
       console.warn(`[Cron lembretes] Fila: item ${item.id} descartado — ${motivo}`)
       retryDescartados++
       continue
     }
 
-    if (!provedor) continue
+    if (!emailDisponivel) continue
 
-    const resultado = await provedor.enviarMensagem({
-      para: item.telefone,
-      corpo: item.mensagem,
-    })
+    const para = listaDeEmails(item.destinatarios)
+    let resultado
+    try {
+      resultado = await enviarEmail(para, { assunto: item.assunto, texto: item.texto, html: item.html })
+    } catch (err) {
+      resultado = { sucesso: false, erro: err instanceof Error ? err.message : String(err) }
+    }
 
     const novasTentativas = item.tentativas + 1
     const novoStatus = resultado.sucesso
@@ -226,19 +221,18 @@ export async function GET(request: NextRequest) {
         : 'pendente'
 
     await db
-      .update(whatsappQueue)
+      .update(emailQueue)
       .set({ tentativas: novasTentativas, status: novoStatus, proximoRetry: proximoRetry(novasTentativas, agora) })
-      .where(eq(whatsappQueue.id, item.id))
+      .where(eq(emailQueue.id, item.id))
 
     const eventoLog = eventoLogDoTipo(item.tipo)
     if (item.agendamentoId && eventoLog) {
-      await db.insert(logsWhatsapp).values({
+      await db.insert(logsEmail).values({
         agendamentoId: item.agendamentoId,
         evento: eventoLog,
-        provedor: provedor.nome,
-        paraTelefone: item.telefone,
-        mensagem: item.mensagem,
-        idMensagemProvedor: resultado.idMensagemProvedor ?? null,
+        paraEmail: item.destinatarios,
+        assunto: item.assunto,
+        idMensagemProvedor: 'idMensagem' in resultado ? (resultado.idMensagem ?? null) : null,
         status: resultado.sucesso ? 'enviado' : 'falhou',
         mensagemErro: resultado.erro ?? null,
       })
@@ -251,7 +245,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     horario: { processados, falhas, total: agendamentosLembrete.length, data_alvo: dataAmanha, executado: rodarLembretesHorario },
     eventos: { processados: eventosProcessados, falhas: eventosFalhas, total: agEventos.length },
+    sem_email: semEmail,
     retry: { processados: retryProcessados, falhas: retryFalhas, descartados: retryDescartados, total: fila.length },
-    whatsapp_disponivel: Boolean(provedor),
+    email_disponivel: emailDisponivel,
   })
 }

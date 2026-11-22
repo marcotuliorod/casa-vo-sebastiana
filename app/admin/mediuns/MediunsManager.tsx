@@ -114,6 +114,7 @@ function LinhaMedium({ medium }: { medium: Medium }) {
                 </span>
               )}
               {medium.telefone && <span>{medium.telefone}</span>}
+              {medium.email && <span>{medium.email}</span>}
             </div>
           </div>
 
@@ -197,7 +198,7 @@ function LinhaMedium({ medium }: { medium: Medium }) {
         <AdminCardSub>
           <p className="text-xs font-medium text-gray-600 uppercase mb-3">Editar médium</p>
           <FormSemReset action={actionEditar} className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label htmlFor={`nome-${medium.id}`} className="text-xs">Nome *</Label>
                 <Input
@@ -230,6 +231,19 @@ function LinhaMedium({ medium }: { medium: Medium }) {
                   type="tel"
                   defaultValue={medium.telefone ?? ''}
                   placeholder="(11) 99999-9999"
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor={`email-${medium.id}`} className="text-xs">
+                  E-mail <span className="text-gray-400 font-normal">(para avisos de atendimento)</span>
+                </Label>
+                <Input
+                  id={`email-${medium.id}`}
+                  name="email"
+                  type="email"
+                  defaultValue={medium.email ?? ''}
+                  placeholder="medium@email.com"
                   className="h-8 text-sm"
                 />
               </div>
@@ -268,7 +282,7 @@ export function MediunsManager({ mediuns }: MediunsManagerProps) {
       <div className="bg-white rounded-xl border p-5">
         <h2 className="text-base font-semibold text-gray-800 mb-4">Adicionar médium</h2>
         <FormSemReset action={action} limparApos={estado && !estado.erro ? estado : null} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="nome">Nome completo *</Label>
               <Input id="nome" name="nome" placeholder="Ex: Mãe Joana" required />
@@ -290,6 +304,13 @@ export function MediunsManager({ mediuns }: MediunsManagerProps) {
                 <span className="font-normal text-gray-400 text-xs">(opcional)</span>
               </Label>
               <Input id="telefone" name="telefone" type="tel" placeholder="(11) 99999-9999" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="email">
+                E-mail{' '}
+                <span className="font-normal text-gray-400 text-xs">(recebe avisos de atendimento)</span>
+              </Label>
+              <Input id="email" name="email" type="email" placeholder="medium@email.com" />
             </div>
           </div>
 

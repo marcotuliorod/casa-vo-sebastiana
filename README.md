@@ -1,6 +1,6 @@
 # 🕯️ Casa de Vó Sebastiana — Sistema de Agendamento
 
-Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Sebastiana** (umbanda). Inclui fluxo público de agendamento em 3 passos, painel administrativo protegido e notificações automáticas via WhatsApp.
+Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Sebastiana** (umbanda). Inclui fluxo público de agendamento em 3 passos, painel administrativo protegido e notificações automáticas por e-mail.
 
 ---
 
@@ -12,7 +12,7 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 | Estilo | Tailwind CSS + shadcn/ui (Radix UI) |
 | Banco de dados | Postgres 17 self-hosted (Docker) + Drizzle ORM |
 | Autenticação | Auth.js (NextAuth v5) — Magic Link via Resend |
-| WhatsApp | Z-API (padrão) ou Twilio (Strategy Pattern) |
+| E-mails | Resend (login, confirmações, lembretes, cancelamentos e avisos à Casa/médiuns) |
 | Deploy | Docker Compose self-hosted (app + Postgres + cron + backup), atrás do Traefik em produção (Caddy opcional para servidor dedicado) |
 | Datas | date-fns + date-fns-tz (America/Sao_Paulo) |
 | Calendário | react-day-picker |
@@ -28,7 +28,7 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 - **Fluxo de agendamento em 3 passos** (mobile-first):
   1. Escolher data — calendário interativo (dias com horários ativos na grade, até 60 dias)
   2. Escolher horário — grid de slots de 30 min disponíveis
-  3. Preencher dados — nome, telefone (WhatsApp), e-mail, observações
+  3. Preencher dados — nome, telefone, e-mail (obrigatório — é o canal de contato), observações
 - **Página do agendamento** acessível por link público via token (sem login)
 - **Auto-cancelamento** via link público
 
@@ -40,10 +40,15 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
   - Bloquear datas ou horários específicos
 - Lista de consulentes (clientes)
 
-### Automação WhatsApp
-- **Confirmação** — enviada ao criar um agendamento
-- **Lembrete 24h** — cron diário às 09:00 BRT (container `cron` do Compose)
-- **Cancelamento** — enviado ao cancelar
+### Comunicação por e-mail
+- **Confirmação** — enviada ao consulente ao criar um agendamento ou inscrição em evento
+- **Lembrete** — na véspera (a partir das 09:00 BRT) para agendamentos confirmados; para eventos, `lembrete_horas` antes
+- **Cancelamento** — enviado ao consulente quando ele ou a Casa cancela
+- **Avisos à Casa** — novos agendamentos, inscrições e cancelamentos para `ADMIN_EMAIL_NOTIFICACOES`
+- **Aviso ao médium** — quando o admin atribui um atendimento a um médium com e-mail cadastrado
+- Falhas de envio vão para a fila `email_queue` e o cron reenvia (até 3 tentativas, validade de 48h)
+
+> O WhatsApp foi removido (custo das APIs). Os botões "Abrir WhatsApp" do painel são só links `wa.me` para contato manual.
 
 ---
 
@@ -51,8 +56,7 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 
 - Node.js 18+
 - Docker e Docker Compose
-- Conta no [Resend](https://resend.com) (gratuita) — envio do magic link de login
-- Conta no [Z-API](https://z-api.io) ou [Twilio](https://twilio.com) para WhatsApp
+- Conta no [Resend](https://resend.com) (gratuita) com **domínio verificado** — magic link de login e todos os e-mails do sistema
 
 ---
 
@@ -90,11 +94,10 @@ AUTH_URL=http://localhost:3000  # URL pública do site
 RESEND_API_KEY=re_...
 AUTH_EMAIL_FROM=Casa de Vó Sebastiana <login@seudominio.com.br>
 
-# ─── WhatsApp ───────────────────────────────────────────────────
-WHATSAPP_PROVIDER=zapi          # 'zapi' ou 'twilio'
-ZAPI_INSTANCE_ID=
-ZAPI_INSTANCE_TOKEN=
-ZAPI_CLIENT_TOKEN=
+# ─── E-mails do sistema ─────────────────────────────────────────
+EMAIL_FROM=Casa de Vó Sebastiana <contato@seudominio.com.br>   # vazio = usa AUTH_EMAIL_FROM
+EMAIL_REPLY_TO=                 # opcional
+ADMIN_EMAIL_NOTIFICACOES=       # quem recebe avisos de agendamentos/cancelamentos (vírgula)
 
 # ─── Cron / Admin ───────────────────────────────────────────────
 CRON_SECRET=                    # gere com: openssl rand -hex 32
@@ -160,17 +163,16 @@ Acesse: https://localhost (certificado local automático do Caddy)
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Sim | Credenciais do container Postgres — a senha precisa bater com a de `DATABASE_URL` |
 | `AUTH_SECRET` | Sim | Chave de assinatura das sessões JWT do Auth.js |
 | `AUTH_URL` | Sim | URL pública do site — evita links quebrados atrás de proxy |
-| `RESEND_API_KEY` | Sim | API key do Resend, usada pelo Auth.js para enviar o magic link |
+| `RESEND_API_KEY` | Sim | API key do Resend — magic link de login e e-mails do sistema |
 | `AUTH_EMAIL_FROM` | Sim | Remetente do e-mail de login — o domínio precisa estar **verificado no Resend**, senão o envio do magic link falha |
 | `DOMAIN` | Sim em produção | Domínio público do site, usado pelo Traefik (`Host(${DOMAIN})`) ou pelo Caddy; `localhost` para testes locais |
 | `COMPOSE_FILE` | Em produção | `docker-compose.yml:docker-compose.traefik.yml` para publicar via Traefik (VPS atual); omitir para usar o Caddy |
-| `WHATSAPP_PROVIDER` | Sim | `zapi` ou `twilio` |
-| `ZAPI_INSTANCE_ID` / `ZAPI_INSTANCE_TOKEN` / `ZAPI_CLIENT_TOKEN` | Se PROVIDER=zapi | Credenciais Z-API |
-| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | Se PROVIDER=twilio | Credenciais Twilio |
+| `EMAIL_FROM` | Não | Remetente dos e-mails do sistema (domínio verificado no Resend). Vazio = usa `AUTH_EMAIL_FROM` |
+| `EMAIL_REPLY_TO` | Não | Endereço que recebe as respostas dos consulentes |
 | `CRON_SECRET` | Sim | Token para autenticar chamadas do cron (mínimo 32 caracteres) |
 | `ADMIN_EMAILS` | Não | Lista de e-mails autorizados no `/admin`, separados por vírgula. Vazio = qualquer usuário autenticado |
-| `ADMIN_WHATSAPP` | Não | Número que recebe notificações de novos agendamentos/cancelamentos |
-| `NEXT_PUBLIC_BASE_URL` | Sim | URL base para links nas mensagens WhatsApp |
+| `ADMIN_EMAIL_NOTIFICACOES` | Não | E-mails (separados por vírgula) que recebem avisos de novos agendamentos, inscrições e cancelamentos |
+| `NEXT_PUBLIC_BASE_URL` | Sim | URL base para os links nos e-mails |
 
 ---
 
@@ -236,18 +238,22 @@ npm run db:studio     # abre o Drizzle Studio (explorador de dados no navegador)
 
 > **Constraint anti-double-booking:** exclusion constraint GIST impede agendamentos sobrepostos com status `pendente` ou `confirmado` (exceto agendamentos de evento, que têm capacidade > 1). Erro Postgres `23P01` é capturado (via `lib/db/errors.ts`) e exibe mensagem amigável ao usuário.
 
-#### `logs_whatsapp`
+#### `logs_email`
+Histórico dos e-mails enviados ao consulente (avisos à Casa e aos médiuns não entram).
+
 | Coluna | Tipo | Descrição |
 |--------|------|-----------|
 | `id` | UUID PK | |
 | `agendamento_id` | UUID FK | |
 | `evento` | ENUM | `confirmacao_agendamento`, `lembrete_24h`, `cancelamento` |
-| `provedor` | TEXT | `zapi` ou `twilio` |
-| `para_telefone` | TEXT | Destinatário |
-| `mensagem` | TEXT | Conteúdo enviado |
-| `id_mensagem_provedor` | TEXT | SID Twilio ou zaapId Z-API |
-| `status` | ENUM | `na_fila`, `enviado`, `entregue`, `falhou` |
+| `para_email` | TEXT | Destinatário |
+| `assunto` | TEXT | Assunto enviado |
+| `id_mensagem_provedor` | TEXT | ID do e-mail no Resend |
+| `status` | ENUM | `enviado`, `falhou` |
 | `mensagem_erro` | TEXT | Detalhes em caso de falha |
+
+#### `email_queue`
+E-mails que falharam, reenviados pelo cron: `destinatarios` (vírgula), `assunto`, `texto`, `html`, `tipo` (`confirmacao`, `lembrete_24h`, `cancelamento`, `admin`, `medium`), `tentativas`/`max_tentativas`, `status` (`pendente`, `enviado`, `falhou`) e `proximo_retry`.
 
 ### Autorização — camada de aplicação, não RLS
 
@@ -283,9 +289,7 @@ Diferente do Supabase, este Postgres não usa Row Level Security. Toda autoriza�
 | `/admin/mediuns` | Server Component | Cadastro de médiuns |
 | `/admin/eventos` | Server Component | Cadastro/edição de eventos recorrentes |
 | `/admin/recados` | Server Component | Mural de recados para médiuns |
-| `/api/cron/lembretes` | API Route | Disparado pelo container `cron`: lembretes (horário + evento) e retry da fila de WhatsApp |
-| `/api/webhooks/twilio` | API Route | Webhook de status Twilio (assinatura HMAC validada) |
-| `/api/webhooks/zapi` | API Route | Webhook de status Z-API (client-token validado) |
+| `/api/cron/lembretes` | API Route | Disparado pelo container `cron`: lembretes (horário + evento) e retry da fila de e-mail |
 
 ### Estrutura de Arquivos
 
@@ -321,8 +325,7 @@ casa-vo-sebastiana/
 │   │   └── recados/page.tsx          # Mural de recados
 │   └── api/
 │       ├── auth/[...nextauth]/route.ts # Rotas nativas do Auth.js
-│       ├── cron/lembretes/route.ts   # Lembretes + retry da fila (disparado pelo container cron)
-│       └── webhooks/twilio/route.ts, webhooks/zapi/route.ts
+│       └── cron/lembretes/route.ts   # Lembretes + retry da fila (disparado pelo container cron)
 │
 ├── components/
 │   ├── booking/
@@ -348,13 +351,11 @@ casa-vo-sebastiana/
 │   │   ├── config.ts                 # Config completa (adapter + provider Resend)
 │   │   ├── emails.ts                 # emailAutorizado() — lógica pura da allowlist ADMIN_EMAILS
 │   │   └── admin.ts                  # getAdminUser()/verificarAdmin() — usados por layout e actions
-│   ├── whatsapp/
-│   │   ├── types.ts                  # Interface ProvedorWhatsApp
-│   │   ├── factory.ts                # getProvedorWhatsApp() factory
-│   │   ├── templates.ts              # mensagens de confirmação/lembrete/cancelamento/eventos
-│   │   └── providers/
-│   │       ├── zapi.ts               # ZApiProvider (REST)
-│   │       └── twilio.ts             # TwilioProvider (HTTP Basic)
+│   ├── email/
+│   │   ├── cliente.ts                # enviarEmail() via API do Resend, emailConfigurado(), listaDeEmails()
+│   │   ├── templates.ts              # assunto + texto + HTML de cada e-mail
+│   │   ├── envio.ts                  # enviarEmailComFila(): envia, grava logs_email e enfileira se falhar
+│   │   └── fila.ts                   # regras puras da fila (descarte, retry, horário dos lembretes)
 │   ├── actions/
 │   │   ├── booking.ts                # criarAgendamento + inscreverEmEvento + cancelarAgendamento
 │   │   ├── admin.ts                  # CRUD de agendamentos/grade/médiuns/eventos/clientes
@@ -406,41 +407,21 @@ casa-vo-sebastiana/
 
 ---
 
-## WhatsApp — Strategy Pattern
+## E-mails
 
-O sistema usa o padrão Strategy para suportar múltiplos provedores sem alterar o código de negócio.
+Todos os e-mails saem pelo Resend (`lib/email/cliente.ts`), com o mesmo `RESEND_API_KEY` do login.
+O remetente (`EMAIL_FROM`, ou `AUTH_EMAIL_FROM`) precisa ser de um **domínio verificado** no
+Resend: com `onboarding@resend.dev` o Resend só entrega para o e-mail do dono da conta.
 
-### Interface (`lib/whatsapp/types.ts`)
+As actions usam `enviarEmailComFila()` (`lib/email/envio.ts`), que nunca lança:
+- envio ok → log `enviado` em `logs_email` (só e-mails ao consulente);
+- Resend recusa (`sucesso: false`) → log `falhou` + item em `email_queue`;
+- envio lança (sem chave/remetente, rede) → item em `email_queue`;
+- consulente sem e-mail (cadastros antigos) → nada a enviar.
 
-```typescript
-interface ProvedorWhatsApp {
-  enviarMensagem(msg: { para: string; corpo: string }): Promise<ResultadoEnvio>
-}
-```
-
-### Factory (`lib/whatsapp/factory.ts`)
-
-```typescript
-// Lê WHATSAPP_PROVIDER do .env e retorna a instância correta
-const provedor = getProvedorWhatsApp() // ZApiProvider | TwilioProvider
-```
-
-### Trocar de provedor
-
-Basta alterar uma linha no `.env`:
-```bash
-WHATSAPP_PROVIDER=twilio   # ou zapi
-```
-
-### Z-API (`lib/whatsapp/providers/zapi.ts`)
-- Endpoint: `POST https://api.z-api.io/instances/{id}/token/{token}/send-text`
-- Header: `Client-Token: {ZAPI_CLIENT_TOKEN}`
-- Telefone: sem `+` (ex: `5511999999999`)
-
-### Twilio (`lib/whatsapp/providers/twilio.ts`)
-- Endpoint: `POST https://api.twilio.com/2010-04-01/Accounts/{SID}/Messages.json`
-- Auth: HTTP Basic (`SID:AuthToken`)
-- From/To: `whatsapp:+número`
+O cron reenvia a fila de hora em hora (até 3 tentativas) e descarta itens com mais de 48h ou de
+agendamentos cancelados/passados (exceto o próprio e-mail de cancelamento). O aviso de
+cancelamento à Casa é enfileirado sem `agendamento_id` para não ser descartado.
 
 ---
 
@@ -480,8 +461,8 @@ Authorization: Bearer {CRON_SECRET}
 
 **Lógica:**
 1. Busca agendamentos com `status = 'confirmado'`, `data_agendada = amanhã`, `lembrete_enviado = false`
-2. Para cada agendamento: envia mensagem WhatsApp via provedor configurado
-3. Registra resultado em `logs_whatsapp`
+2. Para cada agendamento: envia o lembrete por e-mail ao consulente (sem e-mail cadastrado → pula)
+3. Registra resultado em `logs_email`
 4. Marca `lembrete_enviado = true` (idempotente — não envia duplicatas)
 5. Retorna `{ processados, falhas }`
 
@@ -601,11 +582,12 @@ curl -H "Authorization: Bearer $(grep CRON_SECRET .env | cut -d= -f2)" \
   http://localhost:3000/api/cron/lembretes
 ```
 
-### Verificar logs de WhatsApp
+### Verificar e-mails enviados e a fila
 ```bash
-npm run db:studio   # abre o Drizzle Studio, navegue até logs_whatsapp
+npm run db:studio   # abre o Drizzle Studio, navegue até logs_email / email_queue
 # ou:
-docker compose exec postgres psql -U app -d casa_vo_sebastiana -c "SELECT * FROM logs_whatsapp ORDER BY criado_em DESC LIMIT 20;"
+docker compose exec postgres psql -U app -d casa_vo_sebastiana -c "SELECT * FROM logs_email ORDER BY criado_em DESC LIMIT 20;"
+docker compose exec postgres psql -U app -d casa_vo_sebastiana -c "SELECT tipo, destinatarios, status, tentativas, criado_em FROM email_queue ORDER BY criado_em DESC LIMIT 20;"
 ```
 
 ### Bloquear um dia no painel
@@ -621,7 +603,7 @@ Acesse `/admin/disponibilidade` → seção "Bloquear Data" → selecione a data
 | Forms | `useFormState` + `useFormStatus` | React 18 (Next.js 14); `useActionState` é React 19+ |
 | Anti-double-booking | Exclusion constraint GIST | Garantia a nível de banco, não só na aplicação |
 | Token público | `encode(gen_random_bytes(24), 'hex')` | 48 chars hex = 192 bits de entropia, não adivinhável |
-| Telefone | E.164 normalizado | Compatível com ambos provedores WhatsApp |
+| Telefone | E.164 normalizado | Chave única do consulente; links `wa.me` para contato manual |
 | Timezone | `America/Sao_Paulo` via date-fns-tz | Evita bugs de horário de verão e UTC offset |
 | `useFormStatus` | Extraído em componente filho | Deve ser chamado dentro do form, não no componente que contém `<form>` |
 | RLS não recriada no Postgres novo | Autorização só na camada de aplicação | Todo acesso a dados já passava por um client privilegiado (equivalente ao `service_role`); RLS nunca foi o mecanismo real de enforcement — ver seção "Autorização" acima |

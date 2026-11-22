@@ -8,13 +8,6 @@ export type AppointmentStatus =
   | 'realizado'
   | 'nao_compareceu'
 
-export type WhatsappEvento =
-  | 'confirmacao_agendamento'
-  | 'lembrete_24h'
-  | 'cancelamento'
-
-export type WhatsappStatus = 'na_fila' | 'enviado' | 'entregue' | 'falhou'
-
 export interface Cliente {
   id: string
   nome: string
@@ -30,6 +23,7 @@ export interface Medium {
   nome: string
   especialidade: string | null
   telefone: string | null
+  email: string | null
   token_acesso: string
   ativo: boolean
   criado_em: string
@@ -71,20 +65,6 @@ export interface Agendamento {
 
 export interface AgendamentoComCliente extends Agendamento {
   clientes: Cliente
-}
-
-export interface LogWhatsapp {
-  id: string
-  agendamento_id: string
-  evento: WhatsappEvento
-  provedor: string
-  para_telefone: string
-  mensagem: string
-  id_mensagem_provedor: string | null
-  status: WhatsappStatus
-  mensagem_erro: string | null
-  criado_em: string
-  atualizado_em: string
 }
 
 // ─── Eventos ──────────────────────────────────────────────────
