@@ -17,6 +17,8 @@ vi.mock('@/lib/queries/eventos', () => ({
   getEvento: vi.fn(),
   contarInscritosOcorrencia: vi.fn(),
 }))
+// Validação de ocorrência depende da data atual; aqui só interessa o WhatsApp
+vi.mock('@/lib/utils/recorrencia', () => ({ ehOcorrenciaValida: vi.fn(() => true) }))
 vi.mock('@/lib/whatsapp/factory', () => ({
   getProvedorWhatsApp: vi.fn(),
 }))
@@ -32,7 +34,9 @@ import { db } from '@/lib/db'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
 import { clientes, logsWhatsapp, whatsappQueue } from '@/lib/db/schema'
 import { getSlotsDisponiveis } from '@/lib/queries/availability'
-import { cancelarAgendamento, criarAgendamento } from '@/lib/actions/booking'
+import { getEvento, contarInscritosOcorrencia } from '@/lib/queries/eventos'
+import type { Evento } from '@/types/database'
+import { cancelarAgendamento, criarAgendamento, inscreverEmEvento } from '@/lib/actions/booking'
 
 type MockDb = {
   insert: ReturnType<typeof vi.fn>
@@ -232,5 +236,97 @@ describe('criarAgendamento — WhatsApp', () => {
     expect(inseridos.get(whatsappQueue)).toEqual([
       expect.objectContaining({ agendamentoId: 'ag-1', tipo: 'confirmacao' }),
     ])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// inscreverEmEvento — confirmação via WhatsApp
+// ─────────────────────────────────────────────────────────────────────────────
+describe('inscreverEmEvento — WhatsApp', () => {
+  const EVENTO_ID = '11111111-1111-4111-8111-111111111111'
+  const evento: Evento = {
+    id: EVENTO_ID,
+    titulo: 'Gira de Pretos Velhos',
+    descricao: null,
+    data_inicio: '2025-04-05',
+    hora_inicio: '19:00:00',
+    hora_fim: '21:00:00',
+    capacidade: 50,
+    recorrencia: 'nenhuma',
+    data_fim_recorrencia: null,
+    lembrete_horas: 24,
+    ativo: true,
+    criado_em: '2025-01-01T00:00:00Z',
+    atualizado_em: '2025-01-01T00:00:00Z',
+  }
+
+  function formInscricao() {
+    const fd = new FormData()
+    fd.set('evento_id', EVENTO_ID)
+    fd.set('data', '2025-04-05')
+    fd.set('nome', 'Maria Silva')
+    fd.set('telefone', '11999999999')
+    return fd
+  }
+
+  beforeEach(() => {
+    vi.mocked(getEvento).mockResolvedValue(evento)
+    vi.mocked(contarInscritosOcorrencia).mockResolvedValue(0)
+  })
+
+  it('enfileira a confirmação quando getProvedorWhatsApp lança (credenciais ausentes)', async () => {
+    const inseridos = capturarInserts()
+    mockGetProvedorWhatsApp.mockImplementation(() => {
+      throw new Error('Z-API: configure ZAPI_INSTANCE_ID')
+    })
+
+    await inscreverEmEvento(null, formInscricao())
+
+    expect(inseridos.get(whatsappQueue)).toEqual([
+      {
+        agendamentoId: 'ag-1',
+        telefone: '+5511999999999',
+        mensagem: 'msg-confirmacao-evento',
+        tipo: 'confirmacao',
+      },
+    ])
+    expect(console.error).toHaveBeenCalled()
+  })
+
+  it('grava log "falhou" e enfileira quando o envio retorna sucesso:false', async () => {
+    const inseridos = capturarInserts()
+    mockGetProvedorWhatsApp.mockReturnValue({
+      nome: 'zapi',
+      enviarMensagem: vi.fn().mockResolvedValue({ sucesso: false, erro: 'número inválido' }),
+    })
+
+    await inscreverEmEvento(null, formInscricao())
+
+    expect(inseridos.get(logsWhatsapp)).toEqual([
+      expect.objectContaining({
+        agendamentoId: 'ag-1',
+        evento: 'confirmacao_agendamento',
+        status: 'falhou',
+        mensagemErro: 'número inválido',
+      }),
+    ])
+    expect(inseridos.get(whatsappQueue)).toEqual([
+      expect.objectContaining({ agendamentoId: 'ag-1', mensagem: 'msg-confirmacao-evento', tipo: 'confirmacao' }),
+    ])
+  })
+
+  it('grava log "enviado" e não enfileira quando o envio dá certo', async () => {
+    const inseridos = capturarInserts()
+    mockGetProvedorWhatsApp.mockReturnValue({
+      nome: 'zapi',
+      enviarMensagem: vi.fn().mockResolvedValue({ sucesso: true, idMensagemProvedor: 'm-1' }),
+    })
+
+    await inscreverEmEvento(null, formInscricao())
+
+    expect(inseridos.get(logsWhatsapp)).toEqual([
+      expect.objectContaining({ status: 'enviado', idMensagemProvedor: 'm-1' }),
+    ])
+    expect(inseridos.has(whatsappQueue)).toBe(false)
   })
 })
