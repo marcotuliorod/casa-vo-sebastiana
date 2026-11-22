@@ -14,6 +14,7 @@ import { mensagemConfirmacao, mensagemCancelamento, mensagemNovoAgendamentoAdmin
 import { getEvento, contarInscritosOcorrencia } from '@/lib/queries/eventos'
 import { ehOcorrenciaValida } from '@/lib/utils/recorrencia'
 import { normalizarTelefone } from '@/lib/utils/phone'
+import { enviarWhatsAppComFila } from '@/lib/whatsapp/envio'
 
 // Schema de validação para criação de agendamento
 const schemaCriarAgendamento = z.object({
@@ -393,35 +394,20 @@ export async function cancelarAgendamento(token: string): Promise<{ erro?: strin
     return { erro: 'Erro ao cancelar. Tente novamente.' }
   }
 
-  // Enviar mensagem de cancelamento ao consulente
-  try {
-    const provedor = getProvedorWhatsApp()
-    const mensagem = mensagemCancelamento({
+  // Enviar mensagem de cancelamento ao consulente (falha vira item da fila)
+  await enviarWhatsAppComFila({
+    agendamentoId: agendamento.id,
+    telefone: agendamento.cliente.telefone,
+    mensagem: mensagemCancelamento({
       nomeCliente: agendamento.cliente.nome,
       dataAgendada: agendamento.dataAgendada,
       horaInicio: agendamento.horaInicio,
       tokenPublico: token,
       baseUrl,
-    })
-
-    const resultado = await provedor.enviarMensagem({
-      para: agendamento.cliente.telefone,
-      corpo: mensagem,
-    })
-
-    await db.insert(logsWhatsapp).values({
-      agendamentoId: agendamento.id,
-      evento: 'cancelamento',
-      provedor: provedor.nome,
-      paraTelefone: agendamento.cliente.telefone,
-      mensagem,
-      idMensagemProvedor: resultado.idMensagemProvedor ?? null,
-      status: resultado.sucesso ? 'enviado' : 'falhou',
-      mensagemErro: resultado.erro ?? null,
-    })
-  } catch (err) {
-    console.error('[WhatsApp] Erro ao enviar mensagem de cancelamento:', err)
-  }
+    }),
+    evento: 'cancelamento',
+    tipo: 'cancelamento',
+  })
 
   // Notificar admin sobre cancelamento (US-21)
   const adminWhatsApp = process.env.ADMIN_WHATSAPP

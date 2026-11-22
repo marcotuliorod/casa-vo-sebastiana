@@ -11,6 +11,7 @@ import { mensagemErro, codigoPg } from '@/lib/db/errors'
 import { verificarAdmin } from '@/lib/auth/admin'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
 import { mensagemAtribuicaoMedium, mensagemCancelamento } from '@/lib/whatsapp/templates'
+import { enviarWhatsAppComFila } from '@/lib/whatsapp/envio'
 import { normalizarTelefone } from '@/lib/utils/phone'
 import type { AppointmentStatus } from '@/types/database'
 
@@ -28,7 +29,8 @@ export async function atualizarStatusAgendamento(
     return { erro: mensagemErro(erro) }
   }
 
-  // GAP-01: notificar consulente por WhatsApp quando admin cancela
+  // GAP-01: notificar consulente por WhatsApp quando admin cancela.
+  // Falha de envio vira item da fila (whatsapp_queue), nunca impede o cancelamento.
   if (novoStatus === 'cancelado') {
     try {
       const ag = await db.query.agendamentos.findFirst({
@@ -37,21 +39,23 @@ export async function atualizarStatusAgendamento(
       })
 
       if (ag) {
-        const provedor = getProvedorWhatsApp()
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-        await provedor.enviarMensagem({
-          para: normalizarTelefone(ag.cliente.telefone),
-          corpo: mensagemCancelamento({
+        await enviarWhatsAppComFila({
+          agendamentoId: ag.id,
+          telefone: normalizarTelefone(ag.cliente.telefone),
+          mensagem: mensagemCancelamento({
             nomeCliente: ag.cliente.nome,
             dataAgendada: ag.dataAgendada,
             horaInicio: ag.horaInicio,
             tokenPublico: ag.tokenPublico,
             baseUrl,
           }),
+          evento: 'cancelamento',
+          tipo: 'cancelamento',
         })
       }
-    } catch {
-      // WhatsApp falhou — não impede o cancelamento
+    } catch (err) {
+      console.error('[WhatsApp] Falha ao preparar mensagem de cancelamento:', err)
     }
   }
 
