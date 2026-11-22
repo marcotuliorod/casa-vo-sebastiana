@@ -86,7 +86,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
               <div className="flex items-center gap-3 text-gray-600">
                 <Clock className="h-4 w-4 text-brand-muted flex-shrink-0" />
                 <span>
-                  {agendamento.hora_inicio} — {agendamento.hora_fim}
+                  {agendamento.hora_inicio.slice(0, 5)} — {agendamento.hora_fim.slice(0, 5)}
                 </span>
               </div>
 
