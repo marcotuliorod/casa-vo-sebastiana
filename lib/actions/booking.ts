@@ -6,14 +6,15 @@ import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { and, count, eq, gte, lt, ne } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { agendamentos, clientes, logsWhatsapp, whatsappQueue } from '@/lib/db/schema'
-import { mensagemErro, codigoPg } from '@/lib/db/errors'
+import { agendamentos, clientes } from '@/lib/db/schema'
+import { codigoPg } from '@/lib/db/errors'
 import { getSlotsDisponiveis } from '@/lib/queries/availability'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
 import { mensagemConfirmacao, mensagemCancelamento, mensagemNovoAgendamentoAdmin, mensagemCancelamentoAdmin, mensagemConfirmacaoEvento } from '@/lib/whatsapp/templates'
 import { getEvento, contarInscritosOcorrencia } from '@/lib/queries/eventos'
 import { ehOcorrenciaValida } from '@/lib/utils/recorrencia'
 import { normalizarTelefone } from '@/lib/utils/phone'
+import { enviarWhatsAppComFila } from '@/lib/whatsapp/envio'
 
 // Schema de validação para criação de agendamento
 const schemaCriarAgendamento = z.object({
@@ -141,48 +142,14 @@ export async function criarAgendamento(
     baseUrl,
   })
 
-  try {
-    const provedor = getProvedorWhatsApp()
-    const resultadoEnvio = await provedor.enviarMensagem({
-      para: telefoneNormalizado,
-      corpo: mensagemWpp,
-    })
-
-    await db.insert(logsWhatsapp).values({
-      agendamentoId: agendamento.id,
-      evento: 'confirmacao_agendamento',
-      provedor: provedor.nome,
-      paraTelefone: telefoneNormalizado,
-      mensagem: mensagemWpp,
-      idMensagemProvedor: resultadoEnvio.idMensagemProvedor ?? null,
-      status: resultadoEnvio.sucesso ? 'enviado' : 'falhou',
-      mensagemErro: resultadoEnvio.erro ?? null,
-    })
-
-    // US-16: enfileirar retry se falhou
-    if (!resultadoEnvio.sucesso) {
-      await db.insert(whatsappQueue).values({
-        agendamentoId: agendamento.id,
-        telefone: telefoneNormalizado,
-        mensagem: mensagemWpp,
-        tipo: 'confirmacao',
-      })
-    }
-  } catch (err) {
-    // Falha no WhatsApp (ex: credenciais ausentes) não cancela o agendamento
-    console.error('[WhatsApp] Falha ao enviar confirmação:', err)
-    // US-16: enfileirar para retry quando credenciais estiverem configuradas
-    try {
-      await db.insert(whatsappQueue).values({
-        agendamentoId: agendamento.id,
-        telefone: telefoneNormalizado,
-        mensagem: mensagemWpp,
-        tipo: 'confirmacao',
-      })
-    } catch (erroFila) {
-      console.error('[WhatsApp] Falha ao enfileirar retry:', mensagemErro(erroFila))
-    }
-  }
+  // Falha (ex.: credenciais ausentes) não cancela o agendamento: vira item da fila (US-16)
+  await enviarWhatsAppComFila({
+    agendamentoId: agendamento.id,
+    telefone: telefoneNormalizado,
+    mensagem: mensagemWpp,
+    evento: 'confirmacao_agendamento',
+    tipo: 'confirmacao',
+  })
 
   // 4. Notificar admin sobre novo agendamento (US-17)
   const adminWhatsApp = process.env.ADMIN_WHATSAPP
@@ -301,45 +268,13 @@ export async function inscreverEmEvento(
     baseUrl,
   })
 
-  try {
-    const provedor = getProvedorWhatsApp()
-    const resultadoWpp = await provedor.enviarMensagem({
-      para: telefoneNormalizado,
-      corpo: mensagemWpp,
-    })
-
-    await db.insert(logsWhatsapp).values({
-      agendamentoId: agendamento.id,
-      evento: 'confirmacao_agendamento',
-      provedor: provedor.nome,
-      paraTelefone: telefoneNormalizado,
-      mensagem: mensagemWpp,
-      idMensagemProvedor: resultadoWpp.idMensagemProvedor ?? null,
-      status: resultadoWpp.sucesso ? 'enviado' : 'falhou',
-      mensagemErro: resultadoWpp.erro ?? null,
-    })
-
-    if (!resultadoWpp.sucesso) {
-      await db.insert(whatsappQueue).values({
-        agendamentoId: agendamento.id,
-        telefone: telefoneNormalizado,
-        mensagem: mensagemWpp,
-        tipo: 'confirmacao',
-      })
-    }
-  } catch (err) {
-    console.error('[WhatsApp] Falha ao enviar confirmação de evento:', err)
-    try {
-      await db.insert(whatsappQueue).values({
-        agendamentoId: agendamento.id,
-        telefone: telefoneNormalizado,
-        mensagem: mensagemWpp,
-        tipo: 'confirmacao',
-      })
-    } catch (erroFila) {
-      console.error('[WhatsApp] Falha ao enfileirar retry:', mensagemErro(erroFila))
-    }
-  }
+  await enviarWhatsAppComFila({
+    agendamentoId: agendamento.id,
+    telefone: telefoneNormalizado,
+    mensagem: mensagemWpp,
+    evento: 'confirmacao_agendamento',
+    tipo: 'confirmacao',
+  })
 
   // 7. Notificar admin
   const adminWhatsApp = process.env.ADMIN_WHATSAPP
@@ -393,35 +328,20 @@ export async function cancelarAgendamento(token: string): Promise<{ erro?: strin
     return { erro: 'Erro ao cancelar. Tente novamente.' }
   }
 
-  // Enviar mensagem de cancelamento ao consulente
-  try {
-    const provedor = getProvedorWhatsApp()
-    const mensagem = mensagemCancelamento({
+  // Enviar mensagem de cancelamento ao consulente (falha vira item da fila)
+  await enviarWhatsAppComFila({
+    agendamentoId: agendamento.id,
+    telefone: agendamento.cliente.telefone,
+    mensagem: mensagemCancelamento({
       nomeCliente: agendamento.cliente.nome,
       dataAgendada: agendamento.dataAgendada,
       horaInicio: agendamento.horaInicio,
       tokenPublico: token,
       baseUrl,
-    })
-
-    const resultado = await provedor.enviarMensagem({
-      para: agendamento.cliente.telefone,
-      corpo: mensagem,
-    })
-
-    await db.insert(logsWhatsapp).values({
-      agendamentoId: agendamento.id,
-      evento: 'cancelamento',
-      provedor: provedor.nome,
-      paraTelefone: agendamento.cliente.telefone,
-      mensagem,
-      idMensagemProvedor: resultado.idMensagemProvedor ?? null,
-      status: resultado.sucesso ? 'enviado' : 'falhou',
-      mensagemErro: resultado.erro ?? null,
-    })
-  } catch (err) {
-    console.error('[WhatsApp] Erro ao enviar mensagem de cancelamento:', err)
-  }
+    }),
+    evento: 'cancelamento',
+    tipo: 'cancelamento',
+  })
 
   // Notificar admin sobre cancelamento (US-21)
   const adminWhatsApp = process.env.ADMIN_WHATSAPP

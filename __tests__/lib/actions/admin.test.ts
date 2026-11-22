@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // ─── Mocks globais ─────────────────────────────────────────────────────────────
 
@@ -32,6 +32,7 @@ vi.mock('@/lib/utils/phone', () => ({
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth/config'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
+import { logsWhatsapp, whatsappQueue } from '@/lib/db/schema'
 import {
   atualizarStatusAgendamento,
   bloquearData,
@@ -154,8 +155,9 @@ describe('atualizarStatusAgendamento', () => {
   })
 
   it('dispara WhatsApp ao cancelar agendamento', async () => {
-    const mockEnviar = vi.fn().mockResolvedValue(undefined)
-    mockGetProvedorWhatsApp.mockReturnValue({ enviarMensagem: mockEnviar })
+    const mockEnviar = vi.fn().mockResolvedValue({ sucesso: true })
+    mockGetProvedorWhatsApp.mockReturnValue({ nome: 'zapi', enviarMensagem: mockEnviar })
+    mockDb.insert.mockReturnValue(mkInsertChain())
     mockDb.update.mockReturnValue(mkUpdateChain())
     mockDb.query.agendamentos.findFirst.mockResolvedValue({
       dataAgendada: '2025-04-01',
@@ -170,21 +172,99 @@ describe('atualizarStatusAgendamento', () => {
     expect(mockEnviar).toHaveBeenCalledOnce()
   })
 
-  it('não falha se WhatsApp lançar exceção ao cancelar', async () => {
-    mockGetProvedorWhatsApp.mockReturnValue({
-      enviarMensagem: vi.fn().mockRejectedValue(new Error('timeout')),
-    })
-    mockDb.update.mockReturnValue(mkUpdateChain())
-    mockDb.query.agendamentos.findFirst.mockResolvedValue({
+  describe('falha do WhatsApp ao cancelar vira item da fila', () => {
+    const agCancelado = {
+      id: 'ag-1',
       dataAgendada: '2025-04-01',
       horaInicio: '09:00',
       horaFim: '10:00',
       tokenPublico: 'tok-abc',
       cliente: { nome: 'Pedro', telefone: '11988888888' },
+    }
+    let valoresInseridos: Map<unknown, unknown[]>
+
+    beforeEach(() => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      mockDb.update.mockReturnValue(mkUpdateChain())
+      mockDb.query.agendamentos.findFirst.mockResolvedValue(agCancelado)
+      valoresInseridos = new Map()
+      mockDb.insert.mockImplementation((tabela: unknown) => ({
+        values: vi.fn((v: unknown) => {
+          valoresInseridos.set(tabela, [...(valoresInseridos.get(tabela) ?? []), v])
+          return Promise.resolve([])
+        }),
+      }))
     })
 
-    const resultado = await atualizarStatusAgendamento('ag-1', 'cancelado')
-    expect(resultado).toEqual({}) // erro silenciado
+    afterEach(() => {
+      vi.mocked(console.error).mockRestore()
+    })
+
+    const itemFilaEsperado = {
+      agendamentoId: 'ag-1',
+      telefone: '11988888888',
+      mensagem: 'msg-cancelamento',
+      tipo: 'cancelamento',
+    }
+
+    it('enfileira e loga quando o provedor lança exceção', async () => {
+      mockGetProvedorWhatsApp.mockReturnValue({
+        nome: 'zapi',
+        enviarMensagem: vi.fn().mockRejectedValue(new Error('timeout')),
+      })
+
+      const resultado = await atualizarStatusAgendamento('ag-1', 'cancelado')
+
+      expect(resultado).toEqual({})
+      expect(valoresInseridos.get(whatsappQueue)).toEqual([itemFilaEsperado])
+      expect(console.error).toHaveBeenCalled()
+    })
+
+    it('enfileira quando getProvedorWhatsApp lança (credenciais ausentes)', async () => {
+      mockGetProvedorWhatsApp.mockImplementation(() => {
+        throw new Error('Z-API: configure ZAPI_INSTANCE_ID')
+      })
+
+      const resultado = await atualizarStatusAgendamento('ag-1', 'cancelado')
+
+      expect(resultado).toEqual({})
+      expect(valoresInseridos.get(whatsappQueue)).toEqual([itemFilaEsperado])
+    })
+
+    it('grava log "falhou" e enfileira quando o envio retorna sucesso:false', async () => {
+      mockGetProvedorWhatsApp.mockReturnValue({
+        nome: 'zapi',
+        enviarMensagem: vi.fn().mockResolvedValue({ sucesso: false, erro: 'número inválido' }),
+      })
+
+      const resultado = await atualizarStatusAgendamento('ag-1', 'cancelado')
+
+      expect(resultado).toEqual({})
+      expect(valoresInseridos.get(logsWhatsapp)).toEqual([
+        expect.objectContaining({
+          agendamentoId: 'ag-1',
+          evento: 'cancelamento',
+          provedor: 'zapi',
+          status: 'falhou',
+          mensagemErro: 'número inválido',
+        }),
+      ])
+      expect(valoresInseridos.get(whatsappQueue)).toEqual([itemFilaEsperado])
+    })
+
+    it('grava log "enviado" e não enfileira quando o envio dá certo', async () => {
+      mockGetProvedorWhatsApp.mockReturnValue({
+        nome: 'zapi',
+        enviarMensagem: vi.fn().mockResolvedValue({ sucesso: true, idMensagemProvedor: 'm-1' }),
+      })
+
+      await atualizarStatusAgendamento('ag-1', 'cancelado')
+
+      expect(valoresInseridos.get(logsWhatsapp)).toEqual([
+        expect.objectContaining({ status: 'enviado', idMensagemProvedor: 'm-1' }),
+      ])
+      expect(valoresInseridos.has(whatsappQueue)).toBe(false)
+    })
   })
 })
 
