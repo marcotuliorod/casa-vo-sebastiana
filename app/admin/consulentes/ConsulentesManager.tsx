@@ -45,7 +45,7 @@ function LinhaConsulente({ cliente }: { cliente: ClienteComContagem }) {
   )
 
   useEffect(() => {
-    if (estadoEditar === null && editando) {
+    if (estadoEditar?.ok && editando) {
       setEditando(false)
       router.refresh()
     }

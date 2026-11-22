@@ -328,7 +328,7 @@ export async function atribuirMedium(
 
 // ─── Eventos ──────────────────────────────────────────────────────────────────
 
-// `ok: true` (objeto novo a cada envio) é o que faz o useFormState mudar de estado no sucesso;
+// `ok: true` (objeto novo a cada envio) é o que faz o useActionState mudar de estado no sucesso;
 // devolver `null` de novo não dispara nenhum efeito no formulário.
 export type EstadoFormEvento = { erro?: string; campo?: string; ok?: boolean } | null
 
@@ -507,7 +507,7 @@ export async function excluirEvento(id: string): Promise<{ erro?: string }> {
 
 // ─── Agendamentos: editar e excluir ──────────────────────────
 
-export type EstadoFormAgendamento = { erro?: string; campo?: string } | null
+export type EstadoFormAgendamento = { erro?: string; campo?: string; ok?: boolean } | null
 
 const schemaEditarAgendamento = z.object({
   data_agendada: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
@@ -548,7 +548,7 @@ export async function editarAgendamento(
 
   revalidatePath('/admin/agendamentos')
   revalidatePath('/admin')
-  return null
+  return { ok: true }
 }
 
 export async function excluirAgendamento(id: string): Promise<{ erro?: string }> {
@@ -568,7 +568,7 @@ export async function excluirAgendamento(id: string): Promise<{ erro?: string }>
 
 // ─── Clientes/Consulentes: editar e excluir ──────────────────
 
-export type EstadoFormCliente = { erro?: string; campo?: string } | null
+export type EstadoFormCliente = { erro?: string; campo?: string; ok?: boolean } | null
 
 const schemaCliente = z.object({
   nome: z.string().min(2, 'Nome obrigatório'),
@@ -604,7 +604,7 @@ export async function editarCliente(
   }
 
   revalidatePath('/admin/consulentes')
-  return null
+  return { ok: true }
 }
 
 export async function excluirCliente(id: string): Promise<{ erro?: string }> {
@@ -632,7 +632,7 @@ export async function excluirCliente(id: string): Promise<{ erro?: string }> {
 
 // ─── Médiuns: editar e excluir ───────────────────────────────
 
-export type EstadoFormMedium = { erro?: string } | null
+export type EstadoFormMedium = { erro?: string; ok?: boolean } | null
 
 export async function editarMedium(
   id: string,
@@ -658,7 +658,7 @@ export async function editarMedium(
   }
 
   revalidatePath('/admin/mediuns')
-  return null
+  return { ok: true }
 }
 
 export async function excluirMedium(id: string): Promise<{ erro?: string }> {

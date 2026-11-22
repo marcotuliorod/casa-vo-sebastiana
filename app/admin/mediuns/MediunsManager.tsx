@@ -64,7 +64,7 @@ function LinhaMedium({ medium }: { medium: Medium }) {
   )
 
   useEffect(() => {
-    if (estadoEditar === null && editando) {
+    if (estadoEditar?.ok && editando) {
       setEditando(false)
       router.refresh()
     }

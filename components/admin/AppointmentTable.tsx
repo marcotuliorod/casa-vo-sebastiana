@@ -127,7 +127,7 @@ function CardAgendamento({
   )
 
   useEffect(() => {
-    if (estadoEditar === null && editando) {
+    if (estadoEditar?.ok && editando) {
       setEditando(false)
       router.refresh()
     }

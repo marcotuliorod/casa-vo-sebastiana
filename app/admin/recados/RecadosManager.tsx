@@ -139,7 +139,7 @@ function LinhaRecado({ recado }: { recado: Recado }) {
   )
 
   useEffect(() => {
-    if (estadoEditar === null && editando) {
+    if (estadoEditar?.ok && editando) {
       setEditando(false)
       router.refresh()
     }
@@ -262,7 +262,7 @@ export function RecadosManager({ recados }: { recados: Recado[] }) {
   const [estadoCriar, actionCriar] = useActionState(criarRecado, null)
 
   useEffect(() => {
-    if (estadoCriar === null && criando) {
+    if (estadoCriar?.ok && criando) {
       setCriando(false)
       router.refresh()
     }
