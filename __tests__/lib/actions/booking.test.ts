@@ -30,8 +30,9 @@ vi.mock('@/lib/whatsapp/templates', () => ({
 
 import { db } from '@/lib/db'
 import { getProvedorWhatsApp } from '@/lib/whatsapp/factory'
-import { logsWhatsapp, whatsappQueue } from '@/lib/db/schema'
-import { cancelarAgendamento } from '@/lib/actions/booking'
+import { clientes, logsWhatsapp, whatsappQueue } from '@/lib/db/schema'
+import { getSlotsDisponiveis } from '@/lib/queries/availability'
+import { cancelarAgendamento, criarAgendamento } from '@/lib/actions/booking'
 
 type MockDb = {
   insert: ReturnType<typeof vi.fn>
@@ -58,7 +59,12 @@ function capturarInserts() {
   mockDb.insert.mockImplementation((tabela: unknown) => ({
     values: vi.fn((v: unknown) => {
       inseridos.set(tabela, [...(inseridos.get(tabela) ?? []), v])
-      return Promise.resolve([])
+      // Retorno usado por clientes/agendamentos: .returning() e .onConflictDoUpdate().returning()
+      const linha = [{ id: tabela === clientes ? 'cli-1' : 'ag-1', tokenPublico: 'tok-abc' }]
+      return Object.assign(Promise.resolve([]), {
+        returning: vi.fn(() => Promise.resolve(linha)),
+        onConflictDoUpdate: vi.fn(() => ({ returning: vi.fn(() => Promise.resolve(linha)) })),
+      })
     }),
   }))
   return inseridos
@@ -169,5 +175,62 @@ describe('cancelarAgendamento — WhatsApp', () => {
       expect.objectContaining({ status: 'enviado', idMensagemProvedor: 'm-1' }),
     ])
     expect(inseridos.has(whatsappQueue)).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// criarAgendamento — confirmação via WhatsApp
+// ─────────────────────────────────────────────────────────────────────────────
+describe('criarAgendamento — WhatsApp', () => {
+  function formAgendamento() {
+    const fd = new FormData()
+    fd.set('data', '2025-04-01')
+    fd.set('hora_inicio', '09:00')
+    fd.set('hora_fim', '10:00')
+    fd.set('nome', 'Maria Silva')
+    fd.set('telefone', '11999999999')
+    return fd
+  }
+
+  beforeEach(() => {
+    delete process.env.MAX_AGENDAMENTOS_MES
+    vi.mocked(getSlotsDisponiveis).mockResolvedValue({
+      slots: [{ hora_inicio: '09:00', hora_fim: '10:00' }],
+    } as unknown as Awaited<ReturnType<typeof getSlotsDisponiveis>>)
+  })
+
+  it('enfileira a confirmação quando getProvedorWhatsApp lança (credenciais ausentes)', async () => {
+    const inseridos = capturarInserts()
+    mockGetProvedorWhatsApp.mockImplementation(() => {
+      throw new Error('Z-API: configure ZAPI_INSTANCE_ID')
+    })
+
+    await criarAgendamento(null, formAgendamento())
+
+    expect(inseridos.get(whatsappQueue)).toEqual([
+      {
+        agendamentoId: 'ag-1',
+        telefone: '+5511999999999',
+        mensagem: 'msg-confirmacao',
+        tipo: 'confirmacao',
+      },
+    ])
+  })
+
+  it('grava log "falhou" e enfileira quando o envio retorna sucesso:false', async () => {
+    const inseridos = capturarInserts()
+    mockGetProvedorWhatsApp.mockReturnValue({
+      nome: 'zapi',
+      enviarMensagem: vi.fn().mockResolvedValue({ sucesso: false, erro: 'número inválido' }),
+    })
+
+    await criarAgendamento(null, formAgendamento())
+
+    expect(inseridos.get(logsWhatsapp)).toEqual([
+      expect.objectContaining({ evento: 'confirmacao_agendamento', status: 'falhou' }),
+    ])
+    expect(inseridos.get(whatsappQueue)).toEqual([
+      expect.objectContaining({ agendamentoId: 'ag-1', tipo: 'confirmacao' }),
+    ])
   })
 })
