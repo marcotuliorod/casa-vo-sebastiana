@@ -1,4 +1,5 @@
-// Cron job: envia lembretes de 24h para agendamentos confirmados de amanhã
+// Cron job (de hora em hora): lembretes de horário (a partir das 09:00 BRT),
+// lembretes de eventos e reenvio da fila whatsapp_queue.
 // Disparado pelo container `cron` do Docker Compose (ver docker/cron/)
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -11,6 +12,7 @@ import { mensagemLembrete24h, mensagemLembreteEvento } from '@/lib/whatsapp/temp
 import { amanha } from '@/lib/utils/date'
 import { formatInTimeZone } from 'date-fns-tz'
 import { parseISO, addHours } from 'date-fns'
+import { eventoLogDoTipo, horaDeLembretesHorario, motivoDescarte, proximoRetry } from '@/lib/whatsapp/fila'
 
 export async function GET(request: NextRequest) {
   // Verificar autorização do cron
@@ -33,33 +35,33 @@ export async function GET(request: NextRequest) {
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
   const dataAmanha = amanha()
+  const agoraCron = new Date()
+
+  // O cron roda de hora em hora. Lembretes de horário só a partir das 09:00 BRT;
+  // eventos e fila de retry rodam sempre.
+  const rodarLembretesHorario = horaDeLembretesHorario(agoraCron)
 
   // Buscar agendamentos confirmados de amanhã sem lembrete enviado
-  let agendamentosLembrete
-  try {
-    agendamentosLembrete = await getAgendamentosParaLembrete(dataAmanha)
-  } catch (erro) {
-    console.error('[Cron lembretes] Erro na query:', erro)
-    return NextResponse.json({ erro: erro instanceof Error ? erro.message : 'Erro desconhecido' }, { status: 500 })
-  }
-
-  if (!agendamentosLembrete.length) {
-    return NextResponse.json({
-      processados: 0,
-      falhas: 0,
-      mensagem: 'Nenhum lembrete para enviar hoje.',
-    })
+  let agendamentosLembrete: Awaited<ReturnType<typeof getAgendamentosParaLembrete>> = []
+  if (rodarLembretesHorario) {
+    try {
+      agendamentosLembrete = await getAgendamentosParaLembrete(dataAmanha)
+    } catch (erro) {
+      console.error('[Cron lembretes] Erro na query:', erro)
+      return NextResponse.json({ erro: erro instanceof Error ? erro.message : 'Erro desconhecido' }, { status: 500 })
+    }
   }
 
   let processados = 0
   let falhas = 0
 
-  // BUG-OBS02: getProvedorWhatsApp() pode lançar se credenciais ausentes — não deve crashar o cron
+  // BUG-OBS02: getProvedorWhatsApp() pode lançar se credenciais ausentes — não deve crashar o cron.
+  // Sem provedor nada é enviado e nada é marcado: lembretes e fila ficam para o próximo ciclo.
   let provedor: ReturnType<typeof getProvedorWhatsApp> | null = null
   try {
     provedor = getProvedorWhatsApp()
   } catch (err) {
-    console.error('[Cron lembretes] WhatsApp não disponível — pulando envio de lembretes:', err)
+    console.error('[Cron lembretes] WhatsApp não disponível — envios adiados:', err instanceof Error ? err.message : err)
   }
 
   if (provedor) for (const ag of agendamentosLembrete) {
@@ -172,57 +174,84 @@ export async function GET(request: NextRequest) {
   // US-16: Processar fila de retry de mensagens com falha
   let retryProcessados = 0
   let retryFalhas = 0
+  let retryDescartados = 0
 
   const agora = new Date()
   const fila = await db
-    .select()
+    .select({
+      item: whatsappQueue,
+      agStatus: agendamentos.status,
+      agData: agendamentos.dataAgendada,
+    })
     .from(whatsappQueue)
+    .leftJoin(agendamentos, eq(whatsappQueue.agendamentoId, agendamentos.id))
     .where(
       and(
         eq(whatsappQueue.status, 'pendente'),
         lte(whatsappQueue.proximoRetry, agora),
-        lt(whatsappQueue.tentativas, 3)
+        lt(whatsappQueue.tentativas, whatsappQueue.maxTentativas)
       )
     )
 
-  if (fila.length) {
-    let provedorRetry: ReturnType<typeof getProvedorWhatsApp> | null = null
-    try {
-      provedorRetry = getProvedorWhatsApp()
-    } catch (err) {
-      console.error('[Cron lembretes] WhatsApp não disponível — pulando retry queue:', err)
+  for (const { item, agStatus, agData } of fila) {
+    // Descarta mensagens que perderam o sentido (antigas, de agendamento cancelado
+    // ou já passado) — mesmo sem provedor, para não acumular envios atrasados.
+    const motivo = motivoDescarte(
+      {
+        tipo: item.tipo,
+        criadoEm: item.criadoEm,
+        agendamento: agStatus && agData ? { status: agStatus, dataAgendada: agData } : null,
+      },
+      agora
+    )
+    if (motivo) {
+      await db.update(whatsappQueue).set({ status: 'falhou' }).where(eq(whatsappQueue.id, item.id))
+      console.warn(`[Cron lembretes] Fila: item ${item.id} descartado — ${motivo}`)
+      retryDescartados++
+      continue
     }
 
-    if (provedorRetry) for (const item of fila) {
-      const resultado = await provedorRetry.enviarMensagem({
-        para: item.telefone,
-        corpo: item.mensagem,
+    if (!provedor) continue
+
+    const resultado = await provedor.enviarMensagem({
+      para: item.telefone,
+      corpo: item.mensagem,
+    })
+
+    const novasTentativas = item.tentativas + 1
+    const novoStatus = resultado.sucesso
+      ? 'enviado'
+      : novasTentativas >= item.maxTentativas
+        ? 'falhou'
+        : 'pendente'
+
+    await db
+      .update(whatsappQueue)
+      .set({ tentativas: novasTentativas, status: novoStatus, proximoRetry: proximoRetry(novasTentativas, agora) })
+      .where(eq(whatsappQueue.id, item.id))
+
+    const eventoLog = eventoLogDoTipo(item.tipo)
+    if (item.agendamentoId && eventoLog) {
+      await db.insert(logsWhatsapp).values({
+        agendamentoId: item.agendamentoId,
+        evento: eventoLog,
+        provedor: provedor.nome,
+        paraTelefone: item.telefone,
+        mensagem: item.mensagem,
+        idMensagemProvedor: resultado.idMensagemProvedor ?? null,
+        status: resultado.sucesso ? 'enviado' : 'falhou',
+        mensagemErro: resultado.erro ?? null,
       })
-
-      const novasTentativas = item.tentativas + 1
-      const novoStatus = resultado.sucesso
-        ? 'enviado'
-        : novasTentativas >= item.maxTentativas
-          ? 'falhou'
-          : 'pendente'
-
-      // Próximo retry: backoff exponencial (15min, 1h, 4h)
-      const minutosBackoff = [15, 60, 240][novasTentativas - 1] ?? 240
-      const proximoRetry = new Date(Date.now() + minutosBackoff * 60 * 1000)
-
-      await db
-        .update(whatsappQueue)
-        .set({ tentativas: novasTentativas, status: novoStatus, proximoRetry })
-        .where(eq(whatsappQueue.id, item.id))
-
-      if (resultado.sucesso) retryProcessados++
-      else retryFalhas++
     }
+
+    if (resultado.sucesso) retryProcessados++
+    else retryFalhas++
   }
 
   return NextResponse.json({
-    horario: { processados, falhas, total: agendamentosLembrete.length, data_alvo: dataAmanha },
+    horario: { processados, falhas, total: agendamentosLembrete.length, data_alvo: dataAmanha, executado: rodarLembretesHorario },
     eventos: { processados: eventosProcessados, falhas: eventosFalhas, total: agEventos.length },
-    retry: { processados: retryProcessados, falhas: retryFalhas, total: fila.length },
+    retry: { processados: retryProcessados, falhas: retryFalhas, descartados: retryDescartados, total: fila.length },
+    whatsapp_disponivel: Boolean(provedor),
   })
 }
