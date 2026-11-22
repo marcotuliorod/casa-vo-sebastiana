@@ -17,8 +17,6 @@ vi.mock('@/lib/queries/eventos', () => ({
   getEvento: vi.fn(),
   contarInscritosOcorrencia: vi.fn(),
 }))
-// Validação de ocorrência depende da data atual; aqui só interessa o WhatsApp
-vi.mock('@/lib/utils/recorrencia', () => ({ ehOcorrenciaValida: vi.fn(() => true) }))
 vi.mock('@/lib/whatsapp/factory', () => ({
   getProvedorWhatsApp: vi.fn(),
 }))
@@ -270,8 +268,81 @@ describe('inscreverEmEvento — WhatsApp', () => {
   }
 
   beforeEach(() => {
+    // ehOcorrenciaValida (real) só aceita datas de hoje em diante: fixa "hoje" em 01/04/2025.
+    // Só o Date é falsificado para não travar as promises.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2025-04-01T12:00:00-03:00'))
     vi.mocked(getEvento).mockResolvedValue(evento)
     vi.mocked(contarInscritosOcorrencia).mockResolvedValue(0)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  describe('validação da data da ocorrência', () => {
+    function formComData(data: string) {
+      const fd = formInscricao()
+      fd.set('data', data)
+      return fd
+    }
+
+    it('rejeita data que não é ocorrência do evento (evento único em outro dia)', async () => {
+      const resultado = await inscreverEmEvento(null, formComData('2025-04-06'))
+
+      expect(resultado).toEqual({ erro: 'Data inválida para este evento.' })
+      expect(contarInscritosOcorrencia).not.toHaveBeenCalled()
+      expect(mockDb.insert).not.toHaveBeenCalled()
+      expect(mockGetProvedorWhatsApp).not.toHaveBeenCalled()
+    })
+
+    it('rejeita data que não bate com a recorrência semanal', async () => {
+      vi.mocked(getEvento).mockResolvedValue({ ...evento, recorrencia: 'semanal' })
+
+      // 05/04 é a primeira ocorrência; 09/04 fica no meio da semana
+      const resultado = await inscreverEmEvento(null, formComData('2025-04-09'))
+
+      expect(resultado).toEqual({ erro: 'Data inválida para este evento.' })
+      expect(mockDb.insert).not.toHaveBeenCalled()
+    })
+
+    it('rejeita ocorrência que já passou', async () => {
+      vi.mocked(getEvento).mockResolvedValue({ ...evento, data_inicio: '2025-03-29', recorrencia: 'semanal' })
+
+      // 29/03 é ocorrência semanal, mas é anterior a "hoje" (01/04)
+      const resultado = await inscreverEmEvento(null, formComData('2025-03-29'))
+
+      expect(resultado).toEqual({ erro: 'Data inválida para este evento.' })
+      expect(mockDb.insert).not.toHaveBeenCalled()
+    })
+
+    it('rejeita data após o fim da recorrência', async () => {
+      vi.mocked(getEvento).mockResolvedValue({
+        ...evento,
+        recorrencia: 'semanal',
+        data_fim_recorrencia: '2025-04-12',
+      })
+
+      const resultado = await inscreverEmEvento(null, formComData('2025-04-19'))
+
+      expect(resultado).toEqual({ erro: 'Data inválida para este evento.' })
+      expect(mockDb.insert).not.toHaveBeenCalled()
+    })
+
+    it('aceita ocorrência semanal futura e segue para a inscrição', async () => {
+      capturarInserts()
+      mockGetProvedorWhatsApp.mockReturnValue({
+        nome: 'zapi',
+        enviarMensagem: vi.fn().mockResolvedValue({ sucesso: true }),
+      })
+      vi.mocked(getEvento).mockResolvedValue({ ...evento, recorrencia: 'semanal' })
+
+      const resultado = await inscreverEmEvento(null, formComData('2025-04-12'))
+
+      expect(resultado).toBeUndefined() // sucesso redireciona (redirect mockado)
+      expect(contarInscritosOcorrencia).toHaveBeenCalledWith(EVENTO_ID, '2025-04-12')
+      expect(mockDb.insert).toHaveBeenCalled()
+    })
   })
 
   it('enfileira a confirmação quando getProvedorWhatsApp lança (credenciais ausentes)', async () => {
