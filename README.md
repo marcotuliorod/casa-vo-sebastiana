@@ -8,7 +8,7 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 
 | Camada | Tecnologia |
 |--------|-----------|
-| Framework | Next.js 14.2.5 (App Router) + TypeScript |
+| Framework | Next.js 16 (App Router) + React 19 + TypeScript |
 | Estilo | Tailwind CSS + shadcn/ui (Radix UI) |
 | Banco de dados | Postgres 17 self-hosted (Docker) + Drizzle ORM |
 | Autenticação | Auth.js (NextAuth v5) — Magic Link via Resend |
@@ -54,7 +54,7 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 
 ## Pré-requisitos
 
-- Node.js 18+
+- Node.js 22+
 - Docker e Docker Compose
 - Conta no [Resend](https://resend.com) (gratuita) com **domínio verificado** — magic link de login e todos os e-mails do sistema
 
@@ -258,7 +258,7 @@ E-mails que falharam, reenviados pelo cron: `destinatarios` (vírgula), `assunto
 ### Autorização — camada de aplicação, não RLS
 
 Diferente do Supabase, este Postgres não usa Row Level Security. Toda autorização é feita na camada de aplicação:
-- `middleware.ts` protege `/admin/*` (sessão Auth.js válida + `ADMIN_EMAILS`).
+- `proxy.ts` protege `/admin/*` (sessão Auth.js válida + `ADMIN_EMAILS`).
 - Cada Server Action de mutação em `lib/actions/*` chama `verificarAdmin()` (`lib/auth/admin.ts`) antes de tocar o banco.
 - Rotas públicas (agendamento, cancelamento, mural do médium via token) não exigem sessão — a validação é o token em si (`token_publico`/`token_acesso`), não uma policy de banco.
 
@@ -347,7 +347,7 @@ casa-vo-sebastiana/
 │   │   ├── mappers.ts                # Linhas do Drizzle → tipos de app (types/database.ts)
 │   │   └── errors.ts                 # mensagemErro()/codigoPg() — erros do driver postgres
 │   ├── auth/
-│   │   ├── config.edge.ts            # Config Auth.js edge-safe (usada por middleware.ts)
+│   │   ├── config.edge.ts            # Config Auth.js edge-safe (usada por proxy.ts)
 │   │   ├── config.ts                 # Config completa (adapter + provider Resend)
 │   │   ├── emails.ts                 # emailAutorizado() — lógica pura da allowlist ADMIN_EMAILS
 │   │   └── admin.ts                  # getAdminUser()/verificarAdmin() — usados por layout e actions
@@ -392,7 +392,7 @@ casa-vo-sebastiana/
 │   └── db/                            # Testes de integração contra Postgres real (precisam de DATABASE_URL)
 ├── load-tests/                       # k6: smoke, load e stress test
 ├── .github/workflows/ci.yml          # Type-check + lint + test (com Postgres real) em cada push/PR
-├── middleware.ts                     # Protege /admin/* → sessão Auth.js válida + ADMIN_EMAILS
+├── proxy.ts                          # (antigo middleware.ts) Protege /admin/* → sessão Auth.js válida + ADMIN_EMAILS
 ├── Dockerfile                        # Build standalone do Next.js
 ├── docker-compose.yml                # app + postgres + proxy (Caddy) + cron + backup
 ├── docker-compose.traefik.yml        # Produção: desativa o Caddy e publica o app no Traefik
@@ -432,14 +432,14 @@ cancelamento à Casa é enfileirado sem `agendamento_id` para não ser descartad
 3. Receba o magic link por e-mail via Resend (válido por 24h)
 4. Clique no link → redireciona para `/admin`
 
-`middleware.ts` protege todas as rotas `/admin/*`: exige sessão Auth.js válida (JWT) **e**, se
+`proxy.ts` protege todas as rotas `/admin/*`: exige sessão Auth.js válida (JWT) **e**, se
 `ADMIN_EMAILS` estiver configurado, que o e-mail do usuário esteja na lista — quem não estiver é
 redirecionado para `/auth/login`, mesmo com uma sessão válida. `app/admin/layout.tsx` repete a
 mesma checagem (via `lib/auth/admin.ts`) como defesa em profundidade. As Server Actions de mutação
 (`lib/actions/admin.ts`, `lib/actions/recados.ts`) usam o mesmo helper.
 
 A config do Auth.js é dividida em duas partes por causa do Edge Runtime: `lib/auth/config.edge.ts`
-(sem adapter, usada por `middleware.ts`) e `lib/auth/config.ts` (completa, com o adapter Drizzle e o
+(sem adapter, usada por `proxy.ts`) e `lib/auth/config.ts` (completa, com o adapter Drizzle e o
 provider Resend — usada em Server Actions, Server Components e na rota de API).
 
 > **Adicionar um admin:** basta incluir o e-mail em `ADMIN_EMAILS` (variável de ambiente) e a
@@ -599,14 +599,14 @@ Acesse `/admin/disponibilidade` → seção "Bloquear Data" → selecione a data
 
 | Decisão | Escolha | Motivo |
 |---------|---------|--------|
-| Config file | `next.config.mjs` | Next.js 14.2.5 não suporta `.ts` para config |
-| Forms | `useFormState` + `useFormStatus` | React 18 (Next.js 14); `useActionState` é React 19+ |
+| Config file | `next.config.mjs` | Mantido em ESM puro desde o Next 14 (que não aceitava `.ts`); funciona igual no Next 16 |
+| Forms | `useActionState` + `useFormStatus` | React 19 (Next.js 16); substitui o antigo `useFormState` do React 18 |
 | Anti-double-booking | Exclusion constraint GIST | Garantia a nível de banco, não só na aplicação |
 | Token público | `encode(gen_random_bytes(24), 'hex')` | 48 chars hex = 192 bits de entropia, não adivinhável |
 | Telefone | E.164 normalizado | Chave única do consulente; links `wa.me` para contato manual |
 | Timezone | `America/Sao_Paulo` via date-fns-tz | Evita bugs de horário de verão e UTC offset |
 | `useFormStatus` | Extraído em componente filho | Deve ser chamado dentro do form, não no componente que contém `<form>` |
 | RLS não recriada no Postgres novo | Autorização só na camada de aplicação | Todo acesso a dados já passava por um client privilegiado (equivalente ao `service_role`); RLS nunca foi o mecanismo real de enforcement — ver seção "Autorização" acima |
-| Config do Auth.js dividida (edge/full) | `config.edge.ts` sem adapter + `config.ts` completa | O adapter Drizzle carrega o driver `postgres` (Node/TCP), incompatível com o Edge Runtime onde `middleware.ts` roda — mesmo com sessão JWT, só o *import* do adapter já quebraria o middleware |
+| Config do Auth.js dividida (edge/full) | `config.edge.ts` sem adapter + `config.ts` completa | O adapter Drizzle carrega o driver `postgres` (Node/TCP), incompatível com o Edge Runtime onde `proxy.ts` roda — mesmo com sessão JWT, só o *import* do adapter já quebraria o proxy |
 | Erros do driver Postgres | `.cause.code`, não `.code` | drizzle-orm envolve o erro original num `DrizzleQueryError` — `lib/db/errors.ts` centraliza a extração |
 | Postgres sem porta exposta | Só a rede interna do Compose | App e banco no mesmo Compose — nenhuma porta do Postgres é publicada, reduzindo a superfície de ataque |
