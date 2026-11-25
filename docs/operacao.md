@@ -56,7 +56,8 @@ Só existe **uma** versão anterior guardada (a do deploy imediatamente anterior
 ## Restaurar um backup
 
 Os backups diários ficam no volume `backup_data` (15 dias) e são copiados para o Google Drive
-às 04:00 (horário de Brasília). Detalhes no [README](../README.md#5-backups).
+às 04:00 (horário de Brasília), onde ficam por 30 dias (`~/bin/backup-offsite.sh` no servidor,
+fora do repositório; log em `~/backup-offsite.log`). Detalhes no [README](../README.md#5-backups).
 
 **Último ensaio de restauração:** 25/11/2026, com o dump `backup_20261125_162741.dump`,
 restaurado num banco temporário pelo comando do passo 2. As contagens de agendamentos, clientes,

@@ -113,7 +113,7 @@ export default async function PrivacidadePage() {
               <li>registros dos e-mails enviados: apagados automaticamente depois de 90 dias;</li>
               <li>
                 cópias de segurança: feitas todos os dias; as do servidor são apagadas depois de 15
-                dias.
+                dias e as do Google Drive, depois de 30 dias.
               </li>
             </ul>
           </Secao>
@@ -131,6 +131,7 @@ export default async function PrivacidadePage() {
               Pela Lei Geral de Proteção de Dados (LGPD), você pode pedir a qualquer momento para
               ver, corrigir ou apagar seus dados, ou retirar a autorização. Ao apagar, removemos seu
               cadastro, todo o histórico de agendamentos e os registros dos e-mails enviados a você.
+              As cópias de segurança feitas antes do pedido somem sozinhas em até 30 dias.
             </p>
             <p>
               {contato ? (
