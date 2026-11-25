@@ -208,11 +208,15 @@ export function EventoInscricaoForm({
         <textarea
           id="notas"
           name="notas"
+          aria-describedby="notas-dica"
           rows={2}
           maxLength={500}
           placeholder="Alguma informação adicional..."
           className="w-full rounded-xl border border-gray-200 px-3 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-brand-muted resize-none"
         />
+        <p id="notas-dica" className="text-xs text-gray-600">
+          Opcional. Escreva só o necessário para o atendimento. Não é preciso contar detalhes de saúde ou da sua vida pessoal; isso pode ser conversado pessoalmente.
+        </p>
       </div>
 
       {/* Erro geral */}

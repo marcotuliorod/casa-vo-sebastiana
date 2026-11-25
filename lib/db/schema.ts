@@ -67,6 +67,8 @@ export const clientes = pgTable('clientes', {
   atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
   // Quando a pessoa marcou a autorização de uso dos dados no formulário público (LGPD)
   consentimentoEm: timestamp('consentimento_em', { withTimezone: true }),
+  // Versão do texto aceito (lib/consentimento.ts → VERSAO_TEXTOS_LGPD)
+  consentimentoVersao: text('consentimento_versao'),
 })
 
 // ─── grade_horarios ──────────────────────────────────────────

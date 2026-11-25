@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { and, count, eq, gt, inArray, isNull, lt, notInArray, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { agendamentos, clientes, datasBloqueadas, emailQueue, eventos, gradeHorarios, mediuns } from '@/lib/db/schema'
+import { agendamentos, clientes, datasBloqueadas, eventos, gradeHorarios, mediuns } from '@/lib/db/schema'
 import { mensagemErro, codigoPg } from '@/lib/db/errors'
 import { verificarAdmin } from '@/lib/auth/admin'
 import {
@@ -18,6 +18,7 @@ import {
 import { enviarEmailComFila } from '@/lib/email/envio'
 import { listaDeEmails } from '@/lib/email/cliente'
 import { getInfoCasa } from '@/lib/queries/casa'
+import { apagarClienteComHistorico } from '@/lib/db/clientes'
 import type { AppointmentStatus } from '@/types/database'
 
 const BASE_URL_PADRAO = 'http://localhost:3000'
@@ -721,15 +722,7 @@ export async function excluirCliente(id: string): Promise<{ erro?: string }> {
   // e-mail), então saem primeiro; agendamentos.cliente_id é ON DELETE RESTRICT,
   // então o histórico sai antes do cadastro; logs_email cai junto (cascade).
   try {
-    await db.transaction(async (tx) => {
-      const idsAgendamentos = tx
-        .select({ id: agendamentos.id })
-        .from(agendamentos)
-        .where(eq(agendamentos.clienteId, id))
-      await tx.delete(emailQueue).where(inArray(emailQueue.agendamentoId, idsAgendamentos))
-      await tx.delete(agendamentos).where(eq(agendamentos.clienteId, id))
-      await tx.delete(clientes).where(eq(clientes.id, id))
-    })
+    await db.transaction((tx) => apagarClienteComHistorico(tx, id))
   } catch (erro) {
     return { erro: mensagemErro(erro) }
   }
