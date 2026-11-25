@@ -1,7 +1,7 @@
 'use client'
 
 import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
-import { useActionState, useTransition, useEffect, useState } from 'react'
+import { useActionState, useTransition, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   criarMedium,
@@ -58,17 +58,18 @@ function LinhaMedium({ medium }: { medium: Medium }) {
   const [erroExcluir, setErroExcluir] = useState<string | null>(null)
 
   const editarComId = editarMedium.bind(null, medium.id)
+  // Fecha o formulário e atualiza a lista na própria ação, quando salvar dá certo
   const [estadoEditar, actionEditar] = useActionState(
-    editarComId as (estado: EstadoFormMedium, formData: FormData) => Promise<EstadoFormMedium>,
+    async (estado: EstadoFormMedium, formData: FormData): Promise<EstadoFormMedium> => {
+      const resultado = await editarComId(estado, formData)
+      if (resultado?.ok) {
+        setEditando(false)
+        router.refresh()
+      }
+      return resultado
+    },
     null
   )
-
-  useEffect(() => {
-    if (estadoEditar?.ok && editando) {
-      setEditando(false)
-      router.refresh()
-    }
-  }, [estadoEditar])
 
   const handleToggle = () => {
     startTransition(async () => {
@@ -268,13 +269,14 @@ function LinhaMedium({ medium }: { medium: Medium }) {
 
 export function MediunsManager({ mediuns }: MediunsManagerProps) {
   const router = useRouter()
-  const [estado, action] = useActionState(criarMedium, null)
-
-  useEffect(() => {
-    if (estado && !estado.erro) {
-      router.refresh()
-    }
-  }, [estado])
+  const [estado, action] = useActionState(
+    async (anterior: { erro?: string } | null, formData: FormData): Promise<{ erro?: string } | null> => {
+      const resultado = await criarMedium(anterior, formData)
+      if (resultado && !resultado.erro) router.refresh()
+      return resultado
+    },
+    null
+  )
 
   return (
     <div className="space-y-6">

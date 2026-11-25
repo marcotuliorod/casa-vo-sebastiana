@@ -1,7 +1,7 @@
 'use client'
 
 import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
-import { useActionState, useTransition, useEffect, useState } from 'react'
+import { useActionState, useTransition, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   criarRecado,
@@ -133,17 +133,18 @@ function LinhaRecado({ recado }: { recado: Recado }) {
   const [erroExcluir, setErroExcluir] = useState<string | null>(null)
 
   const editarComId = editarRecado.bind(null, recado.id)
+  // Fecha o formulário e atualiza a lista na própria ação, quando salvar dá certo
   const [estadoEditar, actionEditar] = useActionState(
-    editarComId as (estado: EstadoFormRecado, formData: FormData) => Promise<EstadoFormRecado>,
+    async (estado: EstadoFormRecado, formData: FormData): Promise<EstadoFormRecado> => {
+      const resultado = await editarComId(estado, formData)
+      if (resultado?.ok) {
+        setEditando(false)
+        router.refresh()
+      }
+      return resultado
+    },
     null
   )
-
-  useEffect(() => {
-    if (estadoEditar?.ok && editando) {
-      setEditando(false)
-      router.refresh()
-    }
-  }, [estadoEditar])
 
   const handleToggleFixado = () => {
     startTransition(async () => {
@@ -259,14 +260,17 @@ function LinhaRecado({ recado }: { recado: Recado }) {
 export function RecadosManager({ recados }: { recados: Recado[] }) {
   const router = useRouter()
   const [criando, setCriando] = useState(false)
-  const [estadoCriar, actionCriar] = useActionState(criarRecado, null)
-
-  useEffect(() => {
-    if (estadoCriar?.ok && criando) {
-      setCriando(false)
-      router.refresh()
-    }
-  }, [estadoCriar])
+  const [estadoCriar, actionCriar] = useActionState(
+    async (estado: Awaited<ReturnType<typeof criarRecado>>, formData: FormData) => {
+      const resultado = await criarRecado(estado, formData)
+      if (resultado?.ok) {
+        setCriando(false)
+        router.refresh()
+      }
+      return resultado
+    },
+    null
+  )
 
   return (
     <div className="space-y-5">

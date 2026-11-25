@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useTransition, useEffect } from 'react'
+import { useActionState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
 import { Button } from '@/components/ui/button'
@@ -24,15 +24,16 @@ interface BloqueiosListaProps {
 }
 
 export function BloqueiosLista({ bloqueios }: BloqueiosListaProps) {
-  const [estado, action] = useActionState(bloquearData, null)
-  const [, startTransition] = useTransition()
   const router = useRouter()
-
-  useEffect(() => {
-    if (estado && !estado.erro) {
-      router.refresh()
-    }
-  }, [estado])
+  const [estado, action] = useActionState(
+    async (anterior: { erro?: string } | null, formData: FormData): Promise<{ erro?: string } | null> => {
+      const resultado = await bloquearData(anterior, formData)
+      if (resultado && !resultado.erro) router.refresh()
+      return resultado
+    },
+    null
+  )
+  const [, startTransition] = useTransition()
 
   const handleRemover = (id: string) => {
     startTransition(async () => {
