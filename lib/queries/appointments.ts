@@ -1,7 +1,7 @@
 // Queries de agendamentos para o painel admin e área pública
 
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
-import { and, asc, count, eq, gte, ilike, inArray, isNotNull, isNull, lte, ne, or } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { agendamentos, clientes } from '@/lib/db/schema'
 import { mapAgendamentoComCliente } from '@/lib/db/mappers'
@@ -153,19 +153,38 @@ export async function getEstatisticas() {
 }
 
 // Histórico de agendamentos do consulente (por telefone normalizado)
-export async function getHistoricoCliente(telefone: string) {
-  const [cliente] = await db
+// Consulentes com este e-mail (comparação sem diferenciar maiúsculas: cadastros
+// antigos podem ter o e-mail como foi digitado). O mesmo e-mail pode estar em mais
+// de um consulente, já que a chave do cadastro é o telefone.
+async function idsClientesPorEmail(email: string): Promise<string[]> {
+  const linhas = await db
     .select({ id: clientes.id })
     .from(clientes)
-    .where(eq(clientes.telefone, telefone))
-    .limit(1)
+    .where(sql`lower(${clientes.email}) = ${email.trim().toLowerCase()}`)
+  return linhas.map((l) => l.id)
+}
 
-  if (!cliente) return []
+/** Primeiro nome do consulente com este e-mail, ou null se não houver nenhum. */
+export async function getNomeClientePorEmail(email: string): Promise<string | null> {
+  const [linha] = await db
+    .select({ nome: clientes.nome })
+    .from(clientes)
+    .where(sql`lower(${clientes.email}) = ${email.trim().toLowerCase()}`)
+    .orderBy(desc(clientes.atualizadoEm))
+    .limit(1)
+  return linha?.nome ?? null
+}
+
+// Histórico do consulente ("Meus Agendamentos"). Só chamar com um e-mail vindo
+// de um token de acesso válido (lib/historico/token.ts).
+export async function getHistoricoPorEmail(email: string) {
+  const ids = await idsClientesPorEmail(email)
+  if (ids.length === 0) return []
 
   const linhas = await db.query.agendamentos.findMany({
-    where: eq(agendamentos.clienteId, cliente.id),
+    where: inArray(agendamentos.clienteId, ids),
     with: { cliente: true },
-    orderBy: (a, { desc }) => [desc(a.dataAgendada)],
+    orderBy: (a, { desc }) => [desc(a.dataAgendada), desc(a.horaInicio)],
   })
 
   return linhas.map(mapAgendamentoComCliente)

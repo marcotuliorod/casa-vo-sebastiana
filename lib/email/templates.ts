@@ -123,6 +123,18 @@ export function emailCancelamento(info: InfoAgendamento): EmailMontado {
   })
 }
 
+export function emailLinkHistorico(info: { nomeCliente: string; url: string }): EmailMontado {
+  return montarEmail({
+    assunto: `Seus agendamentos — ${NOME_CASA}`,
+    saudacao: `Olá, ${info.nomeCliente}!`,
+    paragrafos: [
+      'Recebemos um pedido para ver o histórico dos seus agendamentos.',
+      'O link abaixo vale por 1 hora. Se não foi você quem pediu, pode ignorar este e-mail.',
+    ],
+    botao: { texto: 'Ver meus agendamentos', url: info.url },
+  })
+}
+
 interface InfoEvento {
   nomeCliente: string
   tituloEvento: string
