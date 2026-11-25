@@ -39,6 +39,9 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+      # Nos primeiros segundos testa a cada 2s: o Traefik só manda tráfego para o
+      # container saudável, então isso encurta o tempo fora do ar em cada deploy.
+      start_interval: 2s
     env_file:
       - .env
     depends_on:

@@ -13,3 +13,9 @@ __tests__
 coverage
 load-tests
 *.md
+.claude
+*.dump
+*.sql.gz
+Img
+docs
+scripts
