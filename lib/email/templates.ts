@@ -4,6 +4,7 @@
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import type { EmailMontado } from './cliente'
+import type { InfoCasa } from '@/lib/queries/casa'
 
 const NOME_CASA = 'Casa de Vó Sebastiana'
 const COR_BOTAO = '#4A86C8'
@@ -27,19 +28,40 @@ interface PartesEmail {
   saudacao: string
   paragrafos: string[]
   detalhes?: Array<[rotulo: string, valor: string]>
+  /** Parágrafos depois dos detalhes (ex.: orientações da Casa) */
+  observacoes?: string[]
   botao?: { texto: string; url: string }
   despedida?: string
+}
+
+/** Endereço, mapa e orientações da Casa (tela /admin/casa); o que estiver vazio fica de fora. */
+function blocoCasa(
+  casa: InfoCasa | undefined,
+  { orientacoes = true, politica = false }: { orientacoes?: boolean; politica?: boolean } = {}
+): { detalhes: Array<[string, string]>; observacoes: string[] } {
+  if (!casa) return { detalhes: [], observacoes: [] }
+  const detalhes: Array<[string, string]> = []
+  if (casa.endereco) detalhes.push(['Endereço', casa.endereco])
+  if (casa.linkMapa) detalhes.push(['Mapa', casa.linkMapa])
+  const contato = [casa.emailContato, casa.telefoneContato].filter(Boolean).join(' · ')
+  if (contato) detalhes.push(['Contato', contato])
+  const observacoes: string[] = []
+  if (orientacoes && casa.orientacoes) observacoes.push(casa.orientacoes)
+  if (politica && casa.politicaCancelamento) observacoes.push(casa.politicaCancelamento)
+  return { detalhes, observacoes }
 }
 
 /** Monta texto e HTML a partir das mesmas partes, para os dois saírem iguais. */
 export function montarEmail(p: PartesEmail): EmailMontado {
   const detalhes = p.detalhes ?? []
+  const observacoes = p.observacoes ?? []
 
   const texto = [
     p.saudacao,
     '',
     ...p.paragrafos.flatMap((par) => [par, '']),
     ...(detalhes.length ? [...detalhes.map(([r, v]) => `${r}: ${v}`), ''] : []),
+    ...observacoes.flatMap((par) => [par, '']),
     ...(p.botao ? [`${p.botao.texto}: ${p.botao.url}`, ''] : []),
     ...(p.despedida ? [p.despedida, ''] : []),
     NOME_CASA,
@@ -54,12 +76,17 @@ ${
 ${detalhes
   .map(
     ([r, v]) =>
-      `    <tr><td style="padding:2px 12px 2px 0;color:#6b7280">${escapeHtml(r)}</td><td style="padding:2px 0"><strong>${escapeHtml(v)}</strong></td></tr>`
+      `    <tr><td style="padding:2px 12px 2px 0;color:#6b7280;vertical-align:top">${escapeHtml(r)}</td><td style="padding:2px 0">${
+        /^https:\/\/\S+$/.test(v)
+          ? `<a href="${escapeHtml(v)}" style="color:${COR_BOTAO}">Abrir no mapa</a>`
+          : `<strong>${escapeHtml(v)}</strong>`
+      }</td></tr>`
   )
   .join('\n')}
   </table>`
     : ''
 }
+${observacoes.map((par) => `  <p style="margin:0 0 16px;white-space:pre-line">${escapeHtml(par)}</p>`).join('\n')}
 ${
   p.botao
     ? `  <p style="margin:24px 0"><a href="${escapeHtml(p.botao.url)}" style="background:${COR_BOTAO};color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block">${escapeHtml(p.botao.texto)}</a></p>`
@@ -81,6 +108,7 @@ interface InfoAgendamento {
   horaFim?: string // 'HH:MM'
   tokenPublico: string
   baseUrl: string
+  casa?: InfoCasa
 }
 
 function horario(info: { horaInicio: string; horaFim?: string }): string {
@@ -92,6 +120,7 @@ function linkAgendamento(info: InfoAgendamento): string {
 }
 
 export function emailConfirmacao(info: InfoAgendamento): EmailMontado {
+  const casa = blocoCasa(info.casa, {})
   return montarEmail({
     assunto: `Agendamento recebido — ${NOME_CASA}`,
     saudacao: `Olá, ${info.nomeCliente}!`,
@@ -102,7 +131,9 @@ export function emailConfirmacao(info: InfoAgendamento): EmailMontado {
     detalhes: [
       ['Data', dataExtenso(info.dataAgendada)],
       ['Horário', horario(info)],
+      ...casa.detalhes,
     ],
+    observacoes: casa.observacoes,
     botao: { texto: 'Ver ou cancelar agendamento', url: linkAgendamento(info) },
     despedida: 'Que a energia do Orixá abençoe você!',
   })
@@ -110,6 +141,7 @@ export function emailConfirmacao(info: InfoAgendamento): EmailMontado {
 
 export function emailAgendamentoConfirmado(info: InfoAgendamento & { tituloEvento?: string }): EmailMontado {
   const oque = info.tituloEvento ? `Sua inscrição em ${info.tituloEvento}` : 'Seu atendimento'
+  const casa = blocoCasa(info.casa, { politica: true })
   return montarEmail({
     assunto: info.tituloEvento
       ? `Inscrição confirmada: ${info.tituloEvento} — ${NOME_CASA}`
@@ -123,7 +155,9 @@ export function emailAgendamentoConfirmado(info: InfoAgendamento & { tituloEvent
       ...(info.tituloEvento ? ([['Evento', info.tituloEvento]] as Array<[string, string]>) : []),
       ['Data', dataExtenso(info.dataAgendada)],
       ['Horário', horario(info)],
+      ...casa.detalhes,
     ],
+    observacoes: casa.observacoes,
     botao: { texto: 'Ver ou cancelar', url: linkAgendamento(info) },
     despedida: 'Que a energia do Orixá abençoe você!',
   })
@@ -132,6 +166,7 @@ export function emailAgendamentoConfirmado(info: InfoAgendamento & { tituloEvent
 export function emailAgendamentoAlterado(
   info: InfoAgendamento & { dataAnterior: string; horaAnterior: string }
 ): EmailMontado {
+  const casa = blocoCasa(info.casa, { orientacoes: false })
   return montarEmail({
     assunto: `Seu agendamento mudou de data ou horário — ${NOME_CASA}`,
     saudacao: `Olá, ${info.nomeCliente}!`,
@@ -142,12 +177,15 @@ export function emailAgendamentoAlterado(
     detalhes: [
       ['Nova data', dataExtenso(info.dataAgendada)],
       ['Novo horário', horario(info)],
+      ...casa.detalhes,
     ],
+    observacoes: casa.observacoes,
     botao: { texto: 'Ver ou cancelar agendamento', url: linkAgendamento(info) },
   })
 }
 
 export function emailLembrete24h(info: InfoAgendamento): EmailMontado {
+  const casa = blocoCasa(info.casa, {})
   return montarEmail({
     assunto: `Lembrete: seu atendimento é amanhã — ${NOME_CASA}`,
     saudacao: `Olá, ${info.nomeCliente}!`,
@@ -155,7 +193,9 @@ export function emailLembrete24h(info: InfoAgendamento): EmailMontado {
     detalhes: [
       ['Data', dataExtenso(info.dataAgendada)],
       ['Horário', horario(info)],
+      ...casa.detalhes,
     ],
+    observacoes: casa.observacoes,
     botao: { texto: 'Ver ou cancelar agendamento', url: linkAgendamento(info) },
     despedida: 'Nos vemos em breve!',
   })
@@ -195,6 +235,7 @@ interface InfoEvento {
   horaFim?: string // 'HH:MM'
   tokenPublico: string
   baseUrl: string
+  casa?: InfoCasa
 }
 
 function horarioEvento(info: InfoEvento): string {
@@ -202,6 +243,7 @@ function horarioEvento(info: InfoEvento): string {
 }
 
 export function emailConfirmacaoEvento(info: InfoEvento): EmailMontado {
+  const casa = blocoCasa(info.casa, { orientacoes: false })
   return montarEmail({
     assunto: `Inscrição recebida: ${info.tituloEvento} — ${NOME_CASA}`,
     saudacao: `Olá, ${info.nomeCliente}!`,
@@ -213,13 +255,16 @@ export function emailConfirmacaoEvento(info: InfoEvento): EmailMontado {
       ['Evento', info.tituloEvento],
       ['Data', dataExtenso(info.dataEvento)],
       ['Horário', horarioEvento(info)],
+      ...casa.detalhes,
     ],
+    observacoes: casa.observacoes,
     botao: { texto: 'Ver ou cancelar inscrição', url: `${info.baseUrl}/agendamento/${info.tokenPublico}` },
     despedida: 'Que a energia do Orixá abençoe você!',
   })
 }
 
 export function emailLembreteEvento(info: InfoEvento): EmailMontado {
+  const casa = blocoCasa(info.casa, { orientacoes: false })
   return montarEmail({
     assunto: `Lembrete: ${info.tituloEvento} — ${NOME_CASA}`,
     saudacao: `Olá, ${info.nomeCliente}!`,
@@ -227,7 +272,9 @@ export function emailLembreteEvento(info: InfoEvento): EmailMontado {
     detalhes: [
       ['Data', dataExtenso(info.dataEvento)],
       ['Horário', horarioEvento(info)],
+      ...casa.detalhes,
     ],
+    observacoes: casa.observacoes,
     botao: { texto: 'Ver ou cancelar inscrição', url: `${info.baseUrl}/agendamento/${info.tokenPublico}` },
     despedida: 'Nos vemos em breve!',
   })

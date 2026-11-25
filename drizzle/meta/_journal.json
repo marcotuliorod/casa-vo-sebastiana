@@ -29,6 +29,13 @@
       "when": 1795624334965,
       "tag": "0003_confirmacao_casa",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795624820020,
+      "tag": "0004_informacoes_casa",
+      "breakpoints": true
     }
   ]
 }

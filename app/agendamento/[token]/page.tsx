@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { getAgendamentoPorToken } from '@/lib/queries/appointments'
 import { getMediumNome } from '@/lib/queries/mediuns'
+import { getInfoCasa } from '@/lib/queries/casa'
+import { InfoCasaBloco } from '@/components/shared/InfoCasaBloco'
 import { formatarDataExtenso } from '@/lib/utils/date'
 import { formatarTelefone } from '@/lib/utils/phone'
 import { Calendar, Clock, User, Phone, CheckCircle2, Sparkles } from 'lucide-react'
@@ -29,6 +31,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
 
   const podeCancel =
     agendamento.status === 'pendente' || agendamento.status === 'confirmado'
+  const infoCasa = await getInfoCasa()
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-light via-background to-background">
@@ -113,6 +116,8 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
             )}
           </CardContent>
         </Card>
+
+        {podeCancel && <InfoCasaBloco info={infoCasa} comOrientacoes className="mt-4" />}
 
         {/* Ações */}
         <div className="mt-4 space-y-3">

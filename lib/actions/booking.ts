@@ -25,6 +25,7 @@ import { enviarEmailComFila } from '@/lib/email/envio'
 import { listaDeEmails } from '@/lib/email/cliente'
 import { LIMITES, MENSAGEM_LIMITE, MENSAGEM_LIMITE_EMAIL, consumirLimite, ipDaRequisicao } from '@/lib/rate-limit'
 import { MENSAGEM_ISCA, campoIscaPreenchido } from '@/lib/isca'
+import { getInfoCasa } from '@/lib/queries/casa'
 
 // Campos do consulente, comuns ao agendamento e à inscrição em evento
 const campoNome = z
@@ -189,8 +190,10 @@ export async function criarAgendamento(
       nomeCliente: nome,
       dataAgendada: data,
       horaInicio: hora_inicio,
+      horaFim: hora_fim,
       tokenPublico: agendamento.tokenPublico,
       baseUrl,
+      casa: await getInfoCasa(),
     }),
     evento: 'confirmacao_agendamento',
     tipo: 'confirmacao',
@@ -325,6 +328,7 @@ export async function inscreverEmEvento(
       horaFim,
       tokenPublico: agendamento.tokenPublico,
       baseUrl,
+      casa: await getInfoCasa(),
     }),
     evento: 'confirmacao_agendamento',
     tipo: 'confirmacao',

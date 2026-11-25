@@ -250,6 +250,25 @@ export const emailQueue = pgTable(
   ]
 )
 
+// ─── configuracoes_casa ──────────────────────────────────────
+// Uma linha só (id = 1): dados da Casa editados no painel e usados no site e nos e-mails.
+
+export const configuracoesCasa = pgTable(
+  'configuracoes_casa',
+  {
+    id: smallint('id').primaryKey().default(1),
+    endereco: text('endereco'),
+    linkMapa: text('link_mapa'),
+    emailContato: text('email_contato'),
+    telefoneContato: text('telefone_contato'),
+    orientacoes: text('orientacoes'),
+    politicaCancelamento: text('politica_cancelamento'),
+    responsavelDados: text('responsavel_dados'),
+    atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check('configuracoes_casa_linha_unica', sql`${t.id} = 1`)]
+)
+
 // ─── recados ─────────────────────────────────────────────────
 
 export const recados = pgTable(

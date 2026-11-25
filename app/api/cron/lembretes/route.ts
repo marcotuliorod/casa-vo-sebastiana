@@ -10,6 +10,7 @@ import { getAgendamentosParaLembrete } from '@/lib/queries/appointments'
 import { emailConfigurado, enviarEmail, listaDeEmails, type EmailMontado } from '@/lib/email/cliente'
 import { emailLembrete24h, emailLembreteEvento } from '@/lib/email/templates'
 import { amanha } from '@/lib/utils/date'
+import { getInfoCasa } from '@/lib/queries/casa'
 import { timingSafeEqual } from 'node:crypto'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import { addHours } from 'date-fns'
@@ -72,6 +73,7 @@ export async function GET(request: NextRequest) {
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
+  const infoCasa = await getInfoCasa()
   const dataAmanha = amanha()
   const agoraCron = new Date()
 
@@ -115,6 +117,7 @@ export async function GET(request: NextRequest) {
       horaFim: ag.hora_fim.slice(0, 5),
       tokenPublico: ag.token_publico,
       baseUrl,
+      casa: infoCasa,
     })
 
     if (await enviarLembrete(ag.id, ag.clientes.email, email)) processados++
@@ -167,6 +170,7 @@ export async function GET(request: NextRequest) {
         horaFim: ag.horaFim.slice(0, 5),
         tokenPublico: ag.tokenPublico,
         baseUrl,
+        casa: infoCasa,
       })
 
       if (await enviarLembrete(ag.id, ag.cliente.email, email)) eventosProcessados++

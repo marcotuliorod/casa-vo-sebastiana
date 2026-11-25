@@ -42,11 +42,20 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <Link href="/admin/disponibilidade" className="text-xs text-gray-600 whitespace-nowrap px-3 py-1.5 rounded-full hover:bg-gray-100">
             Disponibilidade
           </Link>
+          <Link href="/admin/eventos" className="text-xs text-gray-600 whitespace-nowrap px-3 py-1.5 rounded-full hover:bg-gray-100">
+            Eventos
+          </Link>
           <Link href="/admin/consulentes" className="text-xs text-gray-600 whitespace-nowrap px-3 py-1.5 rounded-full hover:bg-gray-100">
             Consulentes
           </Link>
+          <Link href="/admin/mediuns" className="text-xs text-gray-600 whitespace-nowrap px-3 py-1.5 rounded-full hover:bg-gray-100">
+            Médiuns
+          </Link>
           <Link href="/admin/recados" className="text-xs text-gray-600 whitespace-nowrap px-3 py-1.5 rounded-full hover:bg-gray-100">
             Mural
+          </Link>
+          <Link href="/admin/casa" className="text-xs text-gray-600 whitespace-nowrap px-3 py-1.5 rounded-full hover:bg-gray-100">
+            Casa
           </Link>
         </nav>
 

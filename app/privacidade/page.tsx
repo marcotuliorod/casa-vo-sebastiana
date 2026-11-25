@@ -2,20 +2,14 @@
 // compartilha, por quanto tempo guarda e como pedir acesso, correção ou exclusão.
 import Link from 'next/link'
 import { Logo } from '@/components/shared/Logo'
+import { emailDeContato, getInfoCasa } from '@/lib/queries/casa'
 
 export const metadata = {
   title: 'Privacidade | Casa de Vó Sebastiana',
 }
 
-// Lê o e-mail de contato do ambiente em cada requisição, não no build
+// Lê o responsável e o contato (tela "Informações da Casa") em cada requisição, não no build
 export const dynamic = 'force-dynamic'
-
-function emailDeContato(): string | null {
-  const valor = process.env.EMAIL_REPLY_TO?.trim()
-  if (!valor) return null
-  // Aceita "Nome <email@x>" ou só o endereço
-  return valor.match(/<([^>]+)>/)?.[1] ?? valor
-}
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -26,8 +20,9 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
   )
 }
 
-export default function PrivacidadePage() {
-  const contato = emailDeContato()
+export default async function PrivacidadePage() {
+  const infoCasa = await getInfoCasa()
+  const contato = emailDeContato(infoCasa)
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-light via-background to-background">
@@ -39,6 +34,15 @@ export default function PrivacidadePage() {
         </div>
 
         <div className="space-y-8 rounded-xl border bg-white p-6">
+          {infoCasa.responsavelDados && (
+            <Secao titulo="Quem cuida dos seus dados">
+              <p>
+                Os dados deste site são de responsabilidade de{' '}
+                <strong className="font-semibold text-gray-900">{infoCasa.responsavelDados}</strong>.
+              </p>
+            </Secao>
+          )}
+
           <Secao titulo="Quais dados coletamos">
             <p>Quando você agenda um atendimento ou se inscreve em um evento, guardamos:</p>
             <ul className="list-disc pl-5 space-y-1">

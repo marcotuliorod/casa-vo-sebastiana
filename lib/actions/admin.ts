@@ -17,6 +17,7 @@ import {
 } from '@/lib/email/templates'
 import { enviarEmailComFila } from '@/lib/email/envio'
 import { listaDeEmails } from '@/lib/email/cliente'
+import { getInfoCasa } from '@/lib/queries/casa'
 import type { AppointmentStatus } from '@/types/database'
 
 const BASE_URL_PADRAO = 'http://localhost:3000'
@@ -65,6 +66,7 @@ export async function atualizarStatusAgendamento(
     horaFim: antes.horaFim.slice(0, 5),
     tokenPublico: antes.tokenPublico,
     baseUrl,
+    casa: await getInfoCasa(),
   }
 
   try {
@@ -627,6 +629,7 @@ export async function editarAgendamento(
           horaAnterior: antes.horaInicio.slice(0, 5),
           tokenPublico: antes.tokenPublico,
           baseUrl: process.env.NEXT_PUBLIC_BASE_URL ?? BASE_URL_PADRAO,
+          casa: await getInfoCasa(),
         }),
         evento: 'alteracao',
         tipo: 'alteracao',
