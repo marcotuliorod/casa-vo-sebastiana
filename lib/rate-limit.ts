@@ -22,6 +22,8 @@ export const LIMITES = {
   // Cada pedido manda e-mail para o endereço digitado: freia o uso do site para
   // disparar e-mails a terceiros (protege a reputação do domínio no Resend).
   pedidosPorEmail: { max: 3, janelaMs: 24 * 60 * 60 * 1000 },
+  // Link de login do painel (só e-mails autorizados recebem; freia insistência)
+  loginPorEmail: { max: 5, janelaMs: 60 * 60 * 1000 },
 } as const
 
 const MAIOR_JANELA_MS = Math.max(...Object.values(LIMITES).map((l) => l.janelaMs))
