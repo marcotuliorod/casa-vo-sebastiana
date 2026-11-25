@@ -614,7 +614,7 @@ docker compose exec -T postgres dropdb -U app restore_teste
 0 7 * * * docker run --rm -v <projeto>_backup_data:/data:ro -v ~/.config/rclone:/config/rclone rclone/rclone copy /data <remoto>:<bucket>/casa-vo
 ```
 
-`<projeto>` é o nome do projeto Compose (`COMPOSE_PROJECT_NAME`, por padrão o nome da pasta); confira o nome exato do volume com `docker volume ls | grep backup_data`. `copy` não apaga nada no remoto — configure a retenção lá (ex.: lifecycle rule do bucket). Teste o restore a partir de uma cópia remota de tempos em tempos.
+`<projeto>` é o nome do projeto Compose (`COMPOSE_PROJECT_NAME`, por padrão o nome da pasta); confira o nome exato do volume com `docker volume ls | grep backup_data`. `copy` não apaga nada no remoto; na VPS atual, o script `~/bin/backup-offsite.sh` roda em seguida `rclone delete --min-age 30d` no remoto (prazo prometido na Política de Privacidade). Teste o restore a partir de uma cópia remota de tempos em tempos.
 
 ---
 
