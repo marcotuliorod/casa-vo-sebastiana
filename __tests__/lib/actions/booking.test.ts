@@ -7,6 +7,12 @@ vi.mock('@/lib/queries/casa', async (importOriginal) => {
   return { ...real, getInfoCasa: vi.fn(async () => real.INFO_CASA_VAZIA) }
 })
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
+// A gravação do cadastro é a real; a consulta de conflito de telefone é controlada pelo teste
+const telefoneDeOutroCadastro = vi.fn(async () => false)
+vi.mock('@/lib/db/clientes', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/db/clientes')>()),
+  telefoneDeOutroCadastro: (...args: unknown[]) => telefoneDeOutroCadastro(...(args as [])),
+}))
 vi.mock('@/lib/db', () => ({
   db: {
     insert: vi.fn(),
@@ -49,7 +55,7 @@ import type { Evento } from '@/types/database'
 import { cancelarAgendamento, criarAgendamento, inscreverEmEvento } from '@/lib/actions/booking'
 import { MENSAGEM_LIMITE, MENSAGEM_LIMITE_EMAIL, zerarLimites } from '@/lib/rate-limit'
 import { MENSAGEM_ISCA } from '@/lib/isca'
-import { MENSAGEM_CONSENTIMENTO } from '@/lib/consentimento'
+import { MENSAGEM_CONSENTIMENTO, MENSAGEM_TELEFONE_DE_OUTRO_CADASTRO } from '@/lib/consentimento'
 
 type MockDb = {
   insert: ReturnType<typeof vi.fn>
@@ -177,6 +183,7 @@ function formInscricao(campos: Record<string, string> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  telefoneDeOutroCadastro.mockResolvedValue(false)
   zerarLimites()
   delete process.env.ADMIN_EMAIL_NOTIFICACOES
   delete process.env.MAX_AGENDAMENTOS_MES
@@ -772,5 +779,22 @@ describe('autorização de uso dos dados (LGPD)', () => {
     fd.delete('consentimento')
     expect(await inscreverEmEvento(null, fd)).toEqual({ erro: MENSAGEM_CONSENTIMENTO, campo: 'consentimento' })
     expect(getEvento).not.toHaveBeenCalled()
+  })
+})
+
+describe('telefone de outro cadastro', () => {
+  it('criarAgendamento recusa sem gravar nem enviar e-mail', async () => {
+    telefoneDeOutroCadastro.mockResolvedValue(true)
+    const r = await criarAgendamento(null, formAgendamento())
+    expect(r).toEqual({ erro: MENSAGEM_TELEFONE_DE_OUTRO_CADASTRO, campo: 'email' })
+    expect(mockDb.insert).not.toHaveBeenCalled()
+    expect(mockEnviarEmail).not.toHaveBeenCalled()
+  })
+
+  it('inscreverEmEvento recusa dentro da transação, sem gravar', async () => {
+    telefoneDeOutroCadastro.mockResolvedValue(true)
+    const r = await inscreverEmEvento(null, formInscricao())
+    expect(r).toEqual({ erro: MENSAGEM_TELEFONE_DE_OUTRO_CADASTRO })
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 })

@@ -182,13 +182,17 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
         <Textarea
           id="notas"
           name="notas"
-          placeholder="Algo que queira nos informar antes do atendimento..."
+          placeholder="Algo que a Casa precise saber antes do atendimento"
           rows={3}
           maxLength={NOTAS_MAX}
           value={notas}
           onChange={(e) => setNotas(e.target.value)}
+          aria-describedby="notas-dica"
           {...acessivel('notas')}
         />
+        <p id="notas-dica" className="text-xs text-gray-600">
+          Opcional. Escreva só o necessário para o atendimento. Não é preciso contar detalhes de saúde ou da sua vida pessoal; isso pode ser conversado pessoalmente.
+        </p>
         {erroDo('notas') && (
           <p id="notas-erro" role="alert" className="text-xs text-brand-error">{erroDo('notas')}</p>
         )}

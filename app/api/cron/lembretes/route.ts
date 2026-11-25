@@ -11,6 +11,7 @@ import { emailConfigurado, enviarEmail, listaDeEmails, type EmailMontado } from 
 import { emailLembrete24h, emailLembreteEvento } from '@/lib/email/templates'
 import { amanha } from '@/lib/utils/date'
 import { getInfoCasa } from '@/lib/queries/casa'
+import { apagarClienteComHistorico, idsCadastrosVencidos } from '@/lib/db/clientes'
 import { timingSafeEqual } from 'node:crypto'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import { addHours } from 'date-fns'
@@ -277,9 +278,20 @@ export async function GET(request: NextRequest) {
     console.error('[Cron lembretes] Falha na limpeza de registros antigos:', erro instanceof Error ? erro.message : erro)
   }
 
+  // Retenção (LGPD): apaga cadastros sem atendimento há mais de RETENCAO_CADASTRO_ANOS anos
+  let cadastrosApagados = 0
+  try {
+    for (const id of await idsCadastrosVencidos(db, agora)) {
+      await db.transaction((tx) => apagarClienteComHistorico(tx, id))
+      cadastrosApagados++
+    }
+  } catch (erro) {
+    console.error('[Cron lembretes] Falha na limpeza de cadastros antigos:', erro instanceof Error ? erro.message : erro)
+  }
+
   return NextResponse.json({
     horario: { processados, falhas, total: agendamentosLembrete.length, data_alvo: dataAmanha, executado: rodarLembretesHorario },
-    retencao: { registros_apagados: registrosApagados },
+    retencao: { registros_apagados: registrosApagados, cadastros_apagados: cadastrosApagados },
     eventos: { processados: eventosProcessados, falhas: eventosFalhas, total: agEventos.length },
     sem_email: semEmail,
     retry: { processados: retryProcessados, falhas: retryFalhas, descartados: retryDescartados, total: fila.length },

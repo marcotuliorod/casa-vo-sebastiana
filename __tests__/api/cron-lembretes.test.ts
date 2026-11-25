@@ -16,6 +16,7 @@ vi.mock('@/lib/db', () => ({
     update: vi.fn(() => ({ set: (v: unknown) => { updateSet(v); return { where: vi.fn() } } })),
     insert: vi.fn(() => ({ values: (v: unknown) => insertValues(v) })),
     delete: vi.fn(() => ({ where: () => ({ returning: () => apagados() }) })),
+    transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({})),
     query: { agendamentos: { findMany: vi.fn(async () => []) } },
   },
 }))
@@ -23,6 +24,12 @@ vi.mock('@/lib/queries/casa', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/queries/casa')>()
   return { ...real, getInfoCasa: vi.fn(async () => real.INFO_CASA_VAZIA) }
 })
+const idsCadastrosVencidos = vi.fn(async () => [] as string[])
+const apagarClienteComHistorico = vi.fn(async () => {})
+vi.mock('@/lib/db/clientes', () => ({
+  idsCadastrosVencidos: (...a: unknown[]) => idsCadastrosVencidos(...(a as [])),
+  apagarClienteComHistorico: (...a: unknown[]) => apagarClienteComHistorico(...(a as [])),
+}))
 vi.mock('@/lib/queries/appointments', () => ({
   getAgendamentosParaLembrete: vi.fn(async () => []),
 }))
@@ -252,6 +259,17 @@ describe('GET /api/cron/lembretes', () => {
 
     expect(db.delete).toHaveBeenCalledTimes(2)
     expect(res.retencao.registros_apagados).toBe(3)
+  })
+
+  it('apaga cadastros sem atendimento há mais de 2 anos, um por transação', async () => {
+    filaMock.mockResolvedValue([])
+    idsCadastrosVencidos.mockResolvedValueOnce(['c1', 'c2'])
+
+    const res = await (await GET(req())).json()
+
+    expect(apagarClienteComHistorico).toHaveBeenCalledTimes(2)
+    expect(apagarClienteComHistorico).toHaveBeenCalledWith(expect.anything(), 'c2')
+    expect(res.retencao.cadastros_apagados).toBe(2)
   })
 
   it('falha na limpeza não derruba o cron', async () => {

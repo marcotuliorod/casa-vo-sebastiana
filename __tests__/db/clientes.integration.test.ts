@@ -9,7 +9,14 @@ import postgres from 'postgres'
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import { eq, like } from 'drizzle-orm'
 import * as schema from '@/lib/db/schema'
-import { salvarCliente } from '@/lib/db/clientes'
+import {
+  apagarClienteComHistorico,
+  corteRetencaoCadastro,
+  idsCadastrosVencidos,
+  salvarCliente,
+  telefoneDeOutroCadastro,
+} from '@/lib/db/clientes'
+import { VERSAO_TEXTOS_LGPD } from '@/lib/consentimento'
 
 const DATABASE_URL = process.env.DATABASE_URL
 
@@ -24,7 +31,10 @@ describe.skipIf(!DATABASE_URL)('salvarCliente — integração com Postgres real
   })
 
   afterAll(async () => {
-    await db.delete(schema.clientes).where(like(schema.clientes.telefone, `${marcador}%`))
+    const ids = (
+      await db.select({ id: schema.clientes.id }).from(schema.clientes).where(like(schema.clientes.telefone, `${marcador}%`))
+    ).map((c) => c.id)
+    for (const id of ids) await db.transaction((tx) => apagarClienteComHistorico(tx, id))
     await client.end()
   })
 
@@ -88,5 +98,57 @@ describe.skipIf(!DATABASE_URL)('salvarCliente — integração com Postgres real
     const [cli] = await salvarCliente(db, { nome: 'Outra', telefone, email: 'outra6@exemplo.com' })
 
     expect(cli.consentimentoEm?.toISOString()).toBe('2026-01-01T00:00:00.000Z')
+  })
+
+  it('grava a versão do texto aceito junto com a data', async () => {
+    const [cli] = await salvarCliente(db, { nome: 'Maria', telefone: `${marcador}7`, email: 'maria7@exemplo.com' })
+    expect(cli.consentimentoVersao).toBe(VERSAO_TEXTOS_LGPD)
+  })
+
+  it('telefoneDeOutroCadastro: só é conflito com outro e-mail (sem diferenciar maiúsculas)', async () => {
+    const telefone = `${marcador}8`
+    expect(await telefoneDeOutroCadastro(db, telefone, 'qualquer@exemplo.com')).toBe(false) // telefone novo
+    await salvarCliente(db, { nome: 'Dona', telefone, email: 'Dona8@Exemplo.com' })
+    expect(await telefoneDeOutroCadastro(db, telefone, 'dona8@exemplo.com')).toBe(false)
+    expect(await telefoneDeOutroCadastro(db, telefone, 'outra8@exemplo.com')).toBe(true)
+  })
+
+  it('cadastro antigo sem e-mail não conta como conflito', async () => {
+    const telefone = `${marcador}9`
+    await db.insert(schema.clientes).values({ nome: 'Antigo', telefone, email: null })
+    expect(await telefoneDeOutroCadastro(db, telefone, 'novo9@exemplo.com')).toBe(false)
+  })
+
+  it('cadastros vencidos: último atendimento antes do corte de 2 anos; recentes ficam', async () => {
+    const agora = new Date('2030-06-15T12:00:00Z')
+    expect(corteRetencaoCadastro(agora)).toBe('2028-06-15')
+    const [velho, recente, semAgendamento] = await db
+      .insert(schema.clientes)
+      .values([
+        { nome: 'Velho', telefone: `${marcador}10`, email: 'v@exemplo.com' },
+        { nome: 'Recente', telefone: `${marcador}11`, email: 'r@exemplo.com' },
+        { nome: 'Sem agendamento', telefone: `${marcador}12`, email: 's@exemplo.com', criadoEm: new Date('2028-01-01T12:00:00Z') },
+      ])
+      .returning()
+    const [agVelho] = await db
+      .insert(schema.agendamentos)
+      .values([
+        { clienteId: velho.id, dataAgendada: '2028-06-01', horaInicio: '09:00', horaFim: '09:30', status: 'realizado' },
+        { clienteId: recente.id, dataAgendada: '2028-06-01', horaInicio: '10:00', horaFim: '10:30', status: 'realizado' },
+        { clienteId: recente.id, dataAgendada: '2029-12-01', horaInicio: '10:00', horaFim: '10:30', status: 'realizado' },
+      ])
+      .returning()
+    await db.insert(schema.emailQueue).values({
+      agendamentoId: agVelho.id, destinatarios: 'v@exemplo.com', assunto: 'x', texto: 't', html: 'h', tipo: 'confirmacao', status: 'falhou',
+    })
+
+    const vencidos = await idsCadastrosVencidos(db, agora, 10_000)
+    expect(vencidos).toContain(velho.id)
+    expect(vencidos).toContain(semAgendamento.id)
+    expect(vencidos).not.toContain(recente.id)
+
+    await db.transaction((tx) => apagarClienteComHistorico(tx, velho.id))
+    expect(await db.select().from(schema.clientes).where(eq(schema.clientes.id, velho.id))).toEqual([])
+    expect(await db.select().from(schema.emailQueue).where(eq(schema.emailQueue.destinatarios, 'v@exemplo.com'))).toEqual([])
   })
 })

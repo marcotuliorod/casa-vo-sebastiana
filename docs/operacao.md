@@ -56,8 +56,26 @@ Só existe **uma** versão anterior guardada (a do deploy imediatamente anterior
 ## Restaurar um backup
 
 Os backups diários ficam no volume `backup_data` (15 dias) e são copiados para o Google Drive
-às 04:00 (horário de Brasília), onde ficam por 30 dias (`~/bin/backup-offsite.sh` no servidor,
-fora do repositório; log em `~/backup-offsite.log`). Detalhes no [README](../README.md#5-backups).
+às 04:00 (horário de Brasília), **criptografados**, onde ficam por 30 dias
+(`~/bin/backup-offsite.sh` no servidor, fora do repositório; log em `~/backup-offsite.log`).
+
+A cópia usa o remoto `gdrive-cripto` do rclone (pasta `casa-vo-sebastiana/backups-cripto` no
+Drive, com nomes e conteúdo cifrados). A senha está em `~/.casa-vo-sebastiana-backup-chave`
+no servidor; **guarde uma cópia fora do servidor** (gerenciador de senhas), senão, se o
+servidor for perdido, as cópias do Drive não poderão ser abertas.
+
+Baixar e decifrar uma cópia do Drive (no servidor, com o rclone já configurado):
+
+```bash
+docker run --rm --user 1000:1000 -v ~/.config/rclone:/config/rclone rclone/rclone:1.71.2 lsf gdrive-cripto:
+```
+
+```bash
+docker run --rm --user 1000:1000 -v ~/.config/rclone:/config/rclone rclone/rclone:1.71.2 cat gdrive-cripto:backup_AAAAMMDD_HHMMSS.dump > ~/backup_AAAAMMDD_HHMMSS.dump
+```
+
+Em outro computador, configure um remoto `crypt` do rclone apontando para a mesma pasta, com a
+senha e o sal do arquivo de chave. Detalhes no [README](../README.md#5-backups).
 
 **Último ensaio de restauração:** 25/11/2026, com o dump `backup_20261125_162741.dump`,
 restaurado num banco temporário pelo comando do passo 2. As contagens de agendamentos, clientes,

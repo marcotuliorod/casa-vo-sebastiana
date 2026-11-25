@@ -228,11 +228,14 @@ describe('BookingForm', () => {
   describe('Autorização de uso dos dados (LGPD)', () => {
     it('mostra a caixa obrigatória, desmarcada, com link para a política', () => {
       render(<BookingForm data="2025-04-01" horaInicio="09:00" horaFim="10:00" />)
-      const caixa = screen.getByRole('checkbox', { name: /Autorizo a Casa de Vó Sebastiana/ })
+      const caixa = screen.getByRole('checkbox', { name: /autorizo a Casa de Vó Sebastiana/ })
       expect(caixa).not.toBeChecked()
       expect(caixa).toBeRequired()
       expect(caixa).toHaveAttribute('name', 'consentimento')
       expect(caixa).toHaveAttribute('value', 'sim')
+      expect(caixa).toHaveAccessibleDescription(/Sem esta autorização não conseguimos registrar o pedido/)
+      expect(screen.getByText(/Declaro ter 18 anos ou mais/)).toBeInTheDocument()
+      expect(screen.getByText(/ficam fora do Brasil/)).toBeInTheDocument()
       expect(screen.getByRole('link', { name: 'Política de Privacidade' })).toHaveAttribute('href', '/privacidade')
     })
 
@@ -240,7 +243,7 @@ describe('BookingForm', () => {
       mockEstado = { erro: 'Para continuar, marque a autorização de uso dos seus dados.', campo: 'consentimento' }
       render(<BookingForm data="2025-04-01" horaInicio="09:00" horaFim="10:00" />)
       expect(screen.getByRole('alert')).toHaveTextContent('marque a autorização')
-      expect(screen.getByRole('checkbox', { name: /Autorizo/ })).toHaveAttribute('aria-invalid', 'true')
+      expect(screen.getByRole('checkbox', { name: /autorizo/ })).toHaveAttribute('aria-invalid', 'true')
       mockEstado = null
     })
   })

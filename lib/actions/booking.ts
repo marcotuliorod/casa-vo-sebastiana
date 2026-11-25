@@ -8,7 +8,7 @@ import { and, count, eq, gte, lt, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { agendamentos, clientes } from '@/lib/db/schema'
 import { codigoPg } from '@/lib/db/errors'
-import { salvarCliente } from '@/lib/db/clientes'
+import { salvarCliente, telefoneDeOutroCadastro } from '@/lib/db/clientes'
 import { getSlotsDisponiveis } from '@/lib/queries/availability'
 import {
   emailConfirmacao,
@@ -26,7 +26,7 @@ import { listaDeEmails } from '@/lib/email/cliente'
 import { LIMITES, MENSAGEM_LIMITE, MENSAGEM_LIMITE_EMAIL, consumirLimite, ipDaRequisicao } from '@/lib/rate-limit'
 import { MENSAGEM_ISCA, campoIscaPreenchido } from '@/lib/isca'
 import { getInfoCasa } from '@/lib/queries/casa'
-import { MENSAGEM_CONSENTIMENTO } from '@/lib/consentimento'
+import { MENSAGEM_CONSENTIMENTO, MENSAGEM_TELEFONE_DE_OUTRO_CADASTRO } from '@/lib/consentimento'
 
 // Campos do consulente, comuns ao agendamento e à inscrição em evento
 const campoNome = z
@@ -150,6 +150,10 @@ export async function criarAgendamento(
   )
   if (!slotValido) {
     return { erro: 'Este horário não está mais disponível. Por favor, escolha outro.' }
+  }
+
+  if (await telefoneDeOutroCadastro(db, telefoneNormalizado, email)) {
+    return { erro: MENSAGEM_TELEFONE_DE_OUTRO_CADASTRO, campo: 'email' }
   }
 
   if (!consumirLimite(`pedidos:${email}`, LIMITES.pedidosPorEmail)) {
@@ -297,6 +301,9 @@ export async function inscreverEmEvento(
         return { erro: 'Não há mais vagas disponíveis para esta data.' }
       }
 
+      if (await telefoneDeOutroCadastro(tx, telefoneNormalizado, email)) {
+        return { erro: MENSAGEM_TELEFONE_DE_OUTRO_CADASTRO }
+      }
       const [cliente] = await salvarCliente(tx, { nome, telefone: telefoneNormalizado, email })
 
       const [novo] = await tx
