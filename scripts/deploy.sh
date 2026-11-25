@@ -2,9 +2,9 @@
 # Atualiza o site no servidor: baixa o main, reconstrói, aplica migrations e
 # sobe a nova versão esperando o app ficar saudável.
 #
-# Roda no servidor, dentro da pasta do projeto. Chamado pelo GitHub Actions
-# (.github/workflows/deploy.yml) depois de cada merge com CI verde, mas também
-# pode ser rodado à mão: ./scripts/deploy.sh
+# Roda no servidor, dentro da pasta do projeto. Chamado por scripts/auto-deploy.sh
+# quando o main tem versão nova com CI verde, mas também pode ser rodado à mão:
+# ./scripts/deploy.sh
 set -euo pipefail
 
 echo "==> Baixando a versão nova do main"

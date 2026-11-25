@@ -540,10 +540,10 @@ Isso desativa o `proxy` (Caddy) e publica o `app` por labels do Traefik (`docker
 
 ### 4. Deploy de atualizações
 
-**Automático:** depois de cada merge no `main` com CI verde, o workflow `Deploy`
-(`.github/workflows/deploy.yml`) entra no servidor por SSH e roda `scripts/deploy.sh`. Precisa de
-uma configuração única (chave SSH e segredos no GitHub) — passo a passo em
-[`docs/deploy-automatico.md`](docs/deploy-automatico.md). Sem ela, o workflow só avisa e não faz nada.
+**Automático:** o servidor confere a cada 5 minutos se o `main` tem versão nova com o CI verde e,
+se tiver, roda `scripts/deploy.sh` (`scripts/auto-deploy.sh`, agendado no cron). Não usa chaves nem
+segredos no GitHub — o repositório é público. Configuração única (poucos comandos no servidor) em
+[`docs/deploy-automatico.md`](docs/deploy-automatico.md).
 
 **À mão**, no servidor, dentro da pasta do projeto:
 
