@@ -49,9 +49,8 @@ function makeFormData(fields: Record<string, string>): FormData {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // Remover ADMIN_EMAILS para permitir qualquer usuário autenticado
-  // (recados.ts não usa .filter(Boolean) então '' criaria [''] bloqueando tudo)
-  delete process.env.ADMIN_EMAILS
+  // O usuário padrão dos testes (admin@test.com) é o admin autorizado
+  process.env.ADMIN_EMAILS = 'admin@test.com'
   mockAuth.mockResolvedValue(
     mkSessionClient({ email: 'admin@test.com', id: 'uid-admin' })
   )

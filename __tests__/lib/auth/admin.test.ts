@@ -17,12 +17,28 @@ function mkSession(user: { email: string; id: string } | null) {
 beforeEach(() => {
   vi.clearAllMocks()
   delete process.env.ADMIN_EMAILS
+  delete process.env.ADMIN_EMAIL_NOTIFICACOES
 })
 
 describe('emailAutorizado', () => {
-  it('autoriza qualquer email quando ADMIN_EMAILS está vazio', () => {
-    delete process.env.ADMIN_EMAILS
-    expect(emailAutorizado('qualquer@example.com')).toBe(true)
+  it('bloqueia todo mundo quando ADMIN_EMAILS e ADMIN_EMAIL_NOTIFICACOES estão vazios', () => {
+    expect(emailAutorizado('qualquer@example.com')).toBe(false)
+    process.env.ADMIN_EMAILS = ' , '
+    expect(emailAutorizado('qualquer@example.com')).toBe(false)
+  })
+
+  it('sem ADMIN_EMAILS, autoriza só quem recebe os avisos da Casa', () => {
+    process.env.ADMIN_EMAIL_NOTIFICACOES = 'Casa@Exemplo.com, mae@exemplo.com'
+    expect(emailAutorizado('casa@exemplo.com')).toBe(true)
+    expect(emailAutorizado('mae@exemplo.com')).toBe(true)
+    expect(emailAutorizado('intruso@exemplo.com')).toBe(false)
+  })
+
+  it('com ADMIN_EMAILS preenchido, quem só recebe avisos não entra', () => {
+    process.env.ADMIN_EMAILS = 'admin@test.com'
+    process.env.ADMIN_EMAIL_NOTIFICACOES = 'avisos@test.com'
+    expect(emailAutorizado('admin@test.com')).toBe(true)
+    expect(emailAutorizado('avisos@test.com')).toBe(false)
   })
 
   it('autoriza email presente na whitelist, ignorando espaços', () => {
@@ -70,8 +86,8 @@ describe('getAdminUser / verificarAdmin', () => {
     expect(await verificarAdmin()).toBeNull()
   })
 
-  it('permite qualquer usuário autenticado quando ADMIN_EMAILS está vazio', async () => {
+  it('recusa usuário autenticado quando nenhuma lista está configurada', async () => {
     mockAuth.mockResolvedValue(mkSession({ email: 'ninguem-configurado@test.com', id: 'uid-2' }))
-    expect(await verificarAdmin()).toBeNull()
+    expect(await verificarAdmin()).toBe('Não autorizado.')
   })
 })
