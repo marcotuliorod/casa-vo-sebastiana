@@ -1,6 +1,7 @@
 'use client'
 
 import { useActionState, useState } from 'react'
+import { CampoIsca } from '@/components/shared/CampoIsca'
 import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -91,6 +92,7 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
       <input type="hidden" name="data" value={data} />
       <input type="hidden" name="hora_inicio" value={horaInicio} />
       <input type="hidden" name="hora_fim" value={horaFim} />
+      <CampoIsca />
 
       <AppointmentSummary data={data} horaInicio={horaInicio} horaFim={horaFim} />
 

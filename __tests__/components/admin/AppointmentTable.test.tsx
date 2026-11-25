@@ -2,7 +2,7 @@
 
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { AppointmentTable } from '@/components/admin/AppointmentTable'
+import { AppointmentTable, celulaCsv } from '@/components/admin/AppointmentTable'
 import type { AgendamentoComCliente, Medium } from '@/types/database'
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
@@ -28,7 +28,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 vi.mock('@/lib/actions/admin', () => ({
-  atualizarStatusAgendamento: vi.fn().mockResolvedValue(undefined),
+  atualizarStatusAgendamento: vi.fn().mockResolvedValue({}),
   atribuirMedium: vi.fn().mockResolvedValue(undefined),
   editarAgendamento: vi.fn().mockResolvedValue(null),
   excluirAgendamento: vi.fn().mockResolvedValue({}),
@@ -218,35 +218,59 @@ describe('AppointmentTable', () => {
 
   // ─── Confirmação de cancelamento (2 etapas) ─────────────────
   describe('Fluxo de cancelamento em 2 etapas', () => {
-    it('exibe "Cancelar?" ao clicar em Cancelar pela primeira vez', () => {
+    it('ao clicar em Cancelar pede o motivo (opcional) e a confirmação', () => {
       render(<AppointmentTable agendamentos={[makeAgendamento({ status: 'pendente' })]} />)
       fireEvent.click(screen.getByText('Cancelar'))
-      expect(screen.getByText('Cancelar?')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('Motivo (opcional, vai no e-mail)')).toBeInTheDocument()
+      expect(screen.getByText('Cancelar agendamento')).toBeInTheDocument()
+      expect(screen.getByText('Voltar')).toBeInTheDocument()
     })
 
-    it('exibe botões "Sim" e "Não" após clicar em Cancelar', () => {
+    it('clicar em "Voltar" volta ao estado normal sem cancelar', async () => {
+      const { atualizarStatusAgendamento } = await import('@/lib/actions/admin')
       render(<AppointmentTable agendamentos={[makeAgendamento({ status: 'pendente' })]} />)
       fireEvent.click(screen.getByText('Cancelar'))
-      expect(screen.getByText('Sim')).toBeInTheDocument()
-      expect(screen.getByText('Não')).toBeInTheDocument()
-    })
-
-    it('clicar em "Não" volta ao estado normal sem cancelar', () => {
-      render(<AppointmentTable agendamentos={[makeAgendamento({ status: 'pendente' })]} />)
-      fireEvent.click(screen.getByText('Cancelar'))
-      fireEvent.click(screen.getByText('Não'))
-      // Deve voltar ao botão Cancelar original
+      fireEvent.click(screen.getByText('Voltar'))
       expect(screen.getByText('Cancelar')).toBeInTheDocument()
-      expect(screen.queryByText('Cancelar?')).not.toBeInTheDocument()
+      expect(screen.queryByText('Cancelar agendamento')).not.toBeInTheDocument()
+      expect(atualizarStatusAgendamento).not.toHaveBeenCalled()
     })
 
-    it('clicar em "Sim" chama atualizarStatusAgendamento com status "cancelado"', async () => {
+    it('confirmar o cancelamento chama a action com o motivo digitado', async () => {
       const { atualizarStatusAgendamento } = await import('@/lib/actions/admin')
       render(<AppointmentTable agendamentos={[makeAgendamento({ id: 'ag-42', status: 'pendente' })]} />)
       fireEvent.click(screen.getByText('Cancelar'))
-      fireEvent.click(screen.getByText('Sim'))
-      // useTransition executa assincronamente; verificamos que foi chamado
-      expect(atualizarStatusAgendamento).toHaveBeenCalledWith('ag-42', 'cancelado')
+      fireEvent.change(screen.getByPlaceholderText('Motivo (opcional, vai no e-mail)'), {
+        target: { value: 'A Casa estará fechada' },
+      })
+      fireEvent.click(screen.getByText('Cancelar agendamento'))
+      expect(atualizarStatusAgendamento).toHaveBeenCalledWith('ag-42', 'cancelado', 'A Casa estará fechada')
+    })
+  })
+
+  describe('Não compareceu', () => {
+    it('aparece para agendamento confirmado e chama a action', async () => {
+      const { atualizarStatusAgendamento } = await import('@/lib/actions/admin')
+      render(<AppointmentTable agendamentos={[makeAgendamento({ id: 'ag-7', status: 'confirmado' })]} />)
+      fireEvent.click(screen.getByText('Não compareceu'))
+      expect(atualizarStatusAgendamento).toHaveBeenCalledWith('ag-7', 'nao_compareceu', undefined)
+    })
+
+    it('não aparece para agendamento pendente', () => {
+      render(<AppointmentTable agendamentos={[makeAgendamento({ status: 'pendente' })]} />)
+      expect(screen.queryByText('Não compareceu')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('celulaCsv', () => {
+    it.each([
+      ['=HYPERLINK("http://x")', `"'=HYPERLINK(""http://x"")"`],
+      ['+5511999999999', `"'+5511999999999"`],
+      ['-1', `"'-1"`],
+      ['@SUM(A1)', `"'@SUM(A1)"`],
+      ['Maria da Silva', '"Maria da Silva"'],
+    ])('%s vira texto seguro na planilha', (entrada, esperado) => {
+      expect(celulaCsv(entrada)).toBe(esperado)
     })
   })
 

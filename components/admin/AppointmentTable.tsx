@@ -58,6 +58,13 @@ function MediumSelect({
   )
 }
 
+// Planilhas tratam células que começam com = + - @ como fórmula; o apóstrofo força texto.
+export function celulaCsv(valor: unknown): string {
+  let texto = String(valor ?? '')
+  if (/^[=+\-@\t\r]/.test(texto)) texto = `'${texto}`
+  return `"${texto.replace(/"/g, '""')}"`
+}
+
 function ExportarCSVButton({ agendamentos, mediuns = [] }: AppointmentTableProps) {
   const handleExport = () => {
     const headers = ['Data', 'Horário', 'Consulente', 'Telefone', 'Médium', 'Status']
@@ -67,13 +74,13 @@ function ExportarCSVButton({ agendamentos, mediuns = [] }: AppointmentTableProps
         ag.data_agendada,
         `${ag.hora_inicio.slice(0, 5)}–${ag.hora_fim.slice(0, 5)}`,
         ag.clientes.nome,
-        ag.clientes.telefone,
+        fmtPhone(ag.clientes.telefone),
         medium,
         ag.status,
       ]
     })
     const csv = [headers, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .map((row) => row.map(celulaCsv).join(','))
       .join('\n')
 
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
@@ -111,11 +118,12 @@ function CardAgendamento({
 }: {
   ag: AgendamentoComCliente
   mediuns: Medium[]
-  onStatusChange: (id: string, status: AppointmentStatus) => void
+  onStatusChange: (id: string, status: AppointmentStatus, motivo?: string) => void
   atualizando: string | null
 }) {
   const router = useRouter()
   const [confirmandoCancelamento, setConfirmandoCancelamento] = useState(false)
+  const [motivoCancelamento, setMotivoCancelamento] = useState('')
   const [confirmandoExcluir, setConfirmandoExcluir] = useState(false)
   const [editando, setEditando] = useState(false)
   const [erroExcluir, setErroExcluir] = useState<string | null>(null)
@@ -212,36 +220,54 @@ function CardAgendamento({
                 )}
 
                 {ag.status === 'confirmado' && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onStatusChange(ag.id, 'realizado')}
-                  >
-                    Realizado
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onStatusChange(ag.id, 'realizado')}
+                    >
+                      Realizado
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-gray-600"
+                      onClick={() => onStatusChange(ag.id, 'nao_compareceu')}
+                    >
+                      Não compareceu
+                    </Button>
+                  </>
                 )}
 
                 {(ag.status === 'pendente' || ag.status === 'confirmado') && (
                   confirmandoCancelamento ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-gray-500 whitespace-nowrap">Cancelar?</span>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Input
+                        aria-label="Motivo do cancelamento (opcional, vai no e-mail ao consulente)"
+                        placeholder="Motivo (opcional, vai no e-mail)"
+                        value={motivoCancelamento}
+                        maxLength={300}
+                        onChange={(e) => setMotivoCancelamento(e.target.value)}
+                        className="h-8 w-56 text-sm"
+                      />
                       <Button
                         size="sm"
                         variant="outline"
                         className="text-red-700 border-red-200 hover:bg-red-50"
                         onClick={() => {
-                          onStatusChange(ag.id, 'cancelado')
+                          onStatusChange(ag.id, 'cancelado', motivoCancelamento)
                           setConfirmandoCancelamento(false)
+                          setMotivoCancelamento('')
                         }}
                       >
-                        Sim
+                        Cancelar agendamento
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => setConfirmandoCancelamento(false)}
                       >
-                        Não
+                        Voltar
                       </Button>
                     </div>
                   ) : (
@@ -378,12 +404,15 @@ function CardAgendamento({
 export function AppointmentTable({ agendamentos, mediuns = [] }: AppointmentTableProps) {
   const router = useRouter()
   const [atualizando, setAtualizando] = useState<string | null>(null)
+  const [erroStatus, setErroStatus] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 
-  const handleStatus = (id: string, novoStatus: AppointmentStatus) => {
+  const handleStatus = (id: string, novoStatus: AppointmentStatus, motivo?: string) => {
     setAtualizando(id)
+    setErroStatus(null)
     startTransition(async () => {
-      await atualizarStatusAgendamento(id, novoStatus)
+      const resultado = await atualizarStatusAgendamento(id, novoStatus, motivo)
+      if (resultado?.erro) setErroStatus(resultado.erro)
       setAtualizando(null)
       router.refresh()
     })
@@ -403,6 +432,12 @@ export function AppointmentTable({ agendamentos, mediuns = [] }: AppointmentTabl
       <div className="flex justify-end">
         <ExportarCSVButton agendamentos={agendamentos} mediuns={mediuns} />
       </div>
+
+      {erroStatus && (
+        <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+          {erroStatus}
+        </p>
+      )}
 
       <div className="space-y-2">
         {agendamentos.map((ag) => (

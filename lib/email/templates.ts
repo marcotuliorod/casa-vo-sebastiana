@@ -78,21 +78,72 @@ interface InfoAgendamento {
   nomeCliente: string
   dataAgendada: string // 'YYYY-MM-DD'
   horaInicio: string // 'HH:MM'
+  horaFim?: string // 'HH:MM'
   tokenPublico: string
   baseUrl: string
+}
+
+function horario(info: { horaInicio: string; horaFim?: string }): string {
+  return info.horaFim ? `${info.horaInicio} às ${info.horaFim}` : info.horaInicio
+}
+
+function linkAgendamento(info: InfoAgendamento): string {
+  return `${info.baseUrl}/agendamento/${info.tokenPublico}`
 }
 
 export function emailConfirmacao(info: InfoAgendamento): EmailMontado {
   return montarEmail({
     assunto: `Agendamento recebido — ${NOME_CASA}`,
     saudacao: `Olá, ${info.nomeCliente}!`,
-    paragrafos: [`Seu agendamento na ${NOME_CASA} foi recebido.`],
+    paragrafos: [
+      `Recebemos seu pedido de agendamento na ${NOME_CASA}.`,
+      'Ele ainda precisa ser confirmado pela Casa. Você vai receber outro e-mail assim que for confirmado.',
+    ],
     detalhes: [
       ['Data', dataExtenso(info.dataAgendada)],
-      ['Horário', info.horaInicio],
+      ['Horário', horario(info)],
     ],
-    botao: { texto: 'Ver ou cancelar agendamento', url: `${info.baseUrl}/agendamento/${info.tokenPublico}` },
-    despedida: 'Que a energia do Orixá te abençoe!',
+    botao: { texto: 'Ver ou cancelar agendamento', url: linkAgendamento(info) },
+    despedida: 'Que a energia do Orixá abençoe você!',
+  })
+}
+
+export function emailAgendamentoConfirmado(info: InfoAgendamento & { tituloEvento?: string }): EmailMontado {
+  const oque = info.tituloEvento ? `Sua inscrição em ${info.tituloEvento}` : 'Seu atendimento'
+  return montarEmail({
+    assunto: info.tituloEvento
+      ? `Inscrição confirmada: ${info.tituloEvento} — ${NOME_CASA}`
+      : `Agendamento confirmado — ${NOME_CASA}`,
+    saudacao: `Olá, ${info.nomeCliente}!`,
+    paragrafos: [
+      `${oque} na ${NOME_CASA} está confirmado.`,
+      'Você vai receber um lembrete antes da data.',
+    ],
+    detalhes: [
+      ...(info.tituloEvento ? ([['Evento', info.tituloEvento]] as Array<[string, string]>) : []),
+      ['Data', dataExtenso(info.dataAgendada)],
+      ['Horário', horario(info)],
+    ],
+    botao: { texto: 'Ver ou cancelar', url: linkAgendamento(info) },
+    despedida: 'Que a energia do Orixá abençoe você!',
+  })
+}
+
+export function emailAgendamentoAlterado(
+  info: InfoAgendamento & { dataAnterior: string; horaAnterior: string }
+): EmailMontado {
+  return montarEmail({
+    assunto: `Seu agendamento mudou de data ou horário — ${NOME_CASA}`,
+    saudacao: `Olá, ${info.nomeCliente}!`,
+    paragrafos: [
+      `A ${NOME_CASA} alterou seu agendamento, que era em ${dataExtenso(info.dataAnterior, false)} às ${info.horaAnterior}.`,
+      'Confira a nova data e o novo horário abaixo. Se não puder comparecer, cancele pelo botão.',
+    ],
+    detalhes: [
+      ['Nova data', dataExtenso(info.dataAgendada)],
+      ['Novo horário', horario(info)],
+    ],
+    botao: { texto: 'Ver ou cancelar agendamento', url: linkAgendamento(info) },
   })
 }
 
@@ -103,20 +154,21 @@ export function emailLembrete24h(info: InfoAgendamento): EmailMontado {
     paragrafos: [`Lembrando que seu atendimento na ${NOME_CASA} é amanhã.`],
     detalhes: [
       ['Data', dataExtenso(info.dataAgendada)],
-      ['Horário', info.horaInicio],
+      ['Horário', horario(info)],
     ],
-    botao: { texto: 'Precisa cancelar? Clique aqui', url: `${info.baseUrl}/agendamento/${info.tokenPublico}` },
+    botao: { texto: 'Ver ou cancelar agendamento', url: linkAgendamento(info) },
     despedida: 'Nos vemos em breve!',
   })
 }
 
-export function emailCancelamento(info: InfoAgendamento): EmailMontado {
+export function emailCancelamento(info: InfoAgendamento & { motivo?: string | null }): EmailMontado {
   return montarEmail({
     assunto: `Agendamento cancelado — ${NOME_CASA}`,
     saudacao: `Olá, ${info.nomeCliente}.`,
     paragrafos: [
       `Seu agendamento na ${NOME_CASA} para ${dataExtenso(info.dataAgendada)} às ${info.horaInicio} foi cancelado.`,
-      'Quando quiser reagendar, estamos aqui.',
+      ...(info.motivo ? [`Motivo: ${info.motivo}`] : []),
+      'Quando quiser agendar de novo, estamos aqui.',
     ],
     botao: { texto: 'Fazer novo agendamento', url: `${info.baseUrl}/agendar` },
     despedida: 'Que a luz guie seus caminhos.',
@@ -146,21 +198,24 @@ interface InfoEvento {
 }
 
 function horarioEvento(info: InfoEvento): string {
-  return info.horaFim ? `${info.horaInicio} — ${info.horaFim}` : info.horaInicio
+  return horario(info)
 }
 
 export function emailConfirmacaoEvento(info: InfoEvento): EmailMontado {
   return montarEmail({
     assunto: `Inscrição recebida: ${info.tituloEvento} — ${NOME_CASA}`,
     saudacao: `Olá, ${info.nomeCliente}!`,
-    paragrafos: [`Sua inscrição no evento da ${NOME_CASA} foi recebida.`],
+    paragrafos: [
+      `Recebemos sua inscrição no evento da ${NOME_CASA}.`,
+      'Ela ainda precisa ser confirmada pela Casa. Você vai receber outro e-mail assim que for confirmada.',
+    ],
     detalhes: [
       ['Evento', info.tituloEvento],
       ['Data', dataExtenso(info.dataEvento)],
       ['Horário', horarioEvento(info)],
     ],
     botao: { texto: 'Ver ou cancelar inscrição', url: `${info.baseUrl}/agendamento/${info.tokenPublico}` },
-    despedida: 'Que a energia do Orixá te abençoe!',
+    despedida: 'Que a energia do Orixá abençoe você!',
   })
 }
 
@@ -173,7 +228,7 @@ export function emailLembreteEvento(info: InfoEvento): EmailMontado {
       ['Data', dataExtenso(info.dataEvento)],
       ['Horário', horarioEvento(info)],
     ],
-    botao: { texto: 'Precisa cancelar? Clique aqui', url: `${info.baseUrl}/agendamento/${info.tokenPublico}` },
+    botao: { texto: 'Ver ou cancelar inscrição', url: `${info.baseUrl}/agendamento/${info.tokenPublico}` },
     despedida: 'Nos vemos em breve!',
   })
 }

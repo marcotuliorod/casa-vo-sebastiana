@@ -28,13 +28,20 @@ vi.mock('@/lib/email/cliente', async (importOriginal) => ({
 }))
 vi.mock('@/lib/email/templates', () => ({
   emailCancelamento: vi.fn(() => ({ assunto: 'assunto-cancelamento', texto: 'texto-cancelamento', html: 'html-cancelamento' })),
+  emailAgendamentoConfirmado: vi.fn(() => ({ assunto: 'assunto-confirmado', texto: 'texto-confirmado', html: 'html-confirmado' })),
+  emailAgendamentoAlterado: vi.fn(() => ({ assunto: 'assunto-alterado', texto: 'texto-alterado', html: 'html-alterado' })),
   emailAtribuicaoMedium: vi.fn(() => ({ assunto: 'assunto-medium', texto: 'texto-medium', html: 'html-medium' })),
 }))
 
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth/config'
 import { enviarEmail } from '@/lib/email/cliente'
-import { emailAtribuicaoMedium } from '@/lib/email/templates'
+import {
+  emailAgendamentoAlterado,
+  emailAgendamentoConfirmado,
+  emailAtribuicaoMedium,
+  emailCancelamento,
+} from '@/lib/email/templates'
 import { agendamentos, clientes, emailQueue, logsEmail, mediuns } from '@/lib/db/schema'
 import {
   atualizarStatusAgendamento,
@@ -90,6 +97,37 @@ function mkUpdateChain(erro?: Error) {
   }
 }
 
+/** db.select(...).from(t).where(cond).limit(n) → rows */
+function mkSelectLimitChain(rows: unknown[]) {
+  return { from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn(() => Promise.resolve(rows)) })) })) }
+}
+
+/** Erro do driver como o drizzle propaga: código do Postgres em .cause.code */
+function erroPg(code: string) {
+  return Object.assign(new Error('query failed'), { cause: { code } })
+}
+
+/** Agendamento como db.query.agendamentos.findFirst devolve (com cliente e evento) */
+function mkAgendamento(extra: Record<string, unknown> = {}) {
+  return {
+    id: 'ag-1',
+    status: 'pendente',
+    dataAgendada: '2025-04-01',
+    horaInicio: '09:00:00',
+    horaFim: '10:00:00',
+    tokenPublico: 'tok-abc',
+    eventoId: null,
+    evento: null,
+    cliente: { nome: 'Pedro', telefone: '+5511988888888', email: 'pedro@exemplo.com' },
+    ...extra,
+  }
+}
+
+/** Mock de insert que só resolve (logs_email / email_queue) */
+function mkInsertSimples() {
+  mockDb.insert.mockImplementation(() => ({ values: vi.fn(() => Promise.resolve([])) }))
+}
+
 /** db.delete(t).where(cond) */
 function mkDeleteChain(erro?: Error) {
   return { where: vi.fn(() => (erro ? Promise.reject(erro) : Promise.resolve([]))) }
@@ -143,30 +181,98 @@ describe('atualizarStatusAgendamento', () => {
     expect(resultado).toEqual({ erro: 'Não autorizado.' })
   })
 
+  it('retorna erro quando o agendamento não existe', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue(undefined)
+
+    const resultado = await atualizarStatusAgendamento('ag-x', 'confirmado')
+    expect(resultado).toEqual({ erro: 'Agendamento não encontrado.' })
+    expect(mockDb.update).not.toHaveBeenCalled()
+  })
+
   it('retorna erro quando DB falha no update', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue(mkAgendamento())
     mockDb.update.mockReturnValue(mkUpdateChain(new Error('DB error')))
 
     const resultado = await atualizarStatusAgendamento('ag-1', 'confirmado')
     expect(resultado).toEqual({ erro: 'DB error' })
   })
 
-  it('atualiza status com sucesso (sem e-mail para status != cancelado)', async () => {
+  it('confirmar um pendente avisa o consulente com o e-mail "confirmado"', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue(mkAgendamento({ status: 'pendente' }))
     mockDb.update.mockReturnValue(mkUpdateChain())
+    mkInsertSimples()
+    mockEnviarEmail.mockResolvedValue({ sucesso: true, idMensagem: 'm-1' })
 
     const resultado = await atualizarStatusAgendamento('ag-1', 'confirmado')
+
+    expect(resultado).toEqual({})
+    expect(emailAgendamentoConfirmado).toHaveBeenCalledWith(
+      expect.objectContaining({ nomeCliente: 'Pedro', horaInicio: '09:00', horaFim: '10:00', tokenPublico: 'tok-abc' })
+    )
+    expect(mockEnviarEmail).toHaveBeenCalledWith(['pedro@exemplo.com'], expect.objectContaining({ assunto: 'assunto-confirmado' }))
+  })
+
+  it('confirmar inscrição em evento leva o título do evento ao e-mail', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue(
+      mkAgendamento({ eventoId: 'ev-1', evento: { titulo: 'Gira de Pretos Velhos' } })
+    )
+    mockDb.update.mockReturnValue(mkUpdateChain())
+    mkInsertSimples()
+    mockEnviarEmail.mockResolvedValue({ sucesso: true, idMensagem: 'm-1' })
+
+    await atualizarStatusAgendamento('ag-1', 'confirmado')
+
+    expect(emailAgendamentoConfirmado).toHaveBeenCalledWith(
+      expect.objectContaining({ tituloEvento: 'Gira de Pretos Velhos' })
+    )
+  })
+
+  it.each(['confirmado', 'realizado', 'cancelado'] as const)(
+    'não reenvia "confirmado" quando o agendamento já estava %s',
+    async (statusAnterior) => {
+      mockDb.query.agendamentos.findFirst.mockResolvedValue(mkAgendamento({ status: statusAnterior }))
+      mockDb.update.mockReturnValue(mkUpdateChain())
+
+      await atualizarStatusAgendamento('ag-1', 'confirmado')
+      expect(mockEnviarEmail).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(['realizado', 'nao_compareceu'] as const)('marcar como %s não envia e-mail', async (status) => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue(mkAgendamento({ status: 'confirmado' }))
+    mockDb.update.mockReturnValue(mkUpdateChain())
+
+    const resultado = await atualizarStatusAgendamento('ag-1', status)
     expect(resultado).toEqual({})
     expect(mockEnviarEmail).not.toHaveBeenCalled()
   })
 
+  it('cancelar grava o motivo e o leva ao e-mail do consulente', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue(mkAgendamento({ status: 'confirmado' }))
+    const chain = mkUpdateChain()
+    mockDb.update.mockReturnValue(chain)
+    mkInsertSimples()
+    mockEnviarEmail.mockResolvedValue({ sucesso: true, idMensagem: 'm-1' })
+
+    await atualizarStatusAgendamento('ag-1', 'cancelado', '  A Casa estará fechada  ')
+
+    expect(chain.set).toHaveBeenCalledWith({ status: 'cancelado', motivoCancelamento: 'A Casa estará fechada' })
+    expect(emailCancelamento).toHaveBeenCalledWith(expect.objectContaining({ motivo: 'A Casa estará fechada' }))
+  })
+
+  it('cancelar sem motivo grava motivo vazio', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue(mkAgendamento({ status: 'pendente' }))
+    const chain = mkUpdateChain()
+    mockDb.update.mockReturnValue(chain)
+    mkInsertSimples()
+    mockEnviarEmail.mockResolvedValue({ sucesso: true, idMensagem: 'm-1' })
+
+    await atualizarStatusAgendamento('ag-1', 'cancelado')
+    expect(chain.set).toHaveBeenCalledWith({ status: 'cancelado', motivoCancelamento: null })
+  })
+
   describe('e-mail ao consulente quando o admin cancela', () => {
-    const agCancelado = {
-      id: 'ag-1',
-      dataAgendada: '2025-04-01',
-      horaInicio: '09:00:00',
-      horaFim: '10:00:00',
-      tokenPublico: 'tok-abc',
-      cliente: { nome: 'Pedro', telefone: '+5511988888888', email: 'pedro@exemplo.com' },
-    }
+    const agCancelado = mkAgendamento({ status: 'confirmado' })
     let valoresInseridos: Map<unknown, unknown[]>
 
     beforeEach(() => {
@@ -775,11 +881,85 @@ describe('editarAgendamento', () => {
     hora_fim: '10:00',
   }
 
-  it('edita agendamento com sucesso', async () => {
-    mockDb.update.mockReturnValue(mkUpdateChain())
-    const fd = makeFormData(agValido)
-    const resultado = await editarAgendamento('ag-1', null, fd)
+  // Mesmo dia e horário do agValido: edição só de notas
+  const agAtual = mkAgendamento({ status: 'confirmado', dataAgendada: '2025-05-10' })
+
+  it('edita só as notas sem conferir bloqueios nem avisar o consulente', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue(agAtual)
+    const chain = mkUpdateChain()
+    mockDb.update.mockReturnValue(chain)
+
+    const resultado = await editarAgendamento('ag-1', null, makeFormData({ ...agValido, notas: 'Trazer vela' }))
+
     expect(resultado).toEqual({ ok: true })
+    expect(mockDb.select).not.toHaveBeenCalled()
+    expect(mockEnviarEmail).not.toHaveBeenCalled()
+    expect(chain.set).toHaveBeenCalledWith(expect.not.objectContaining({ lembreteEnviado: false }))
+  })
+
+  it('mudar a data avisa o consulente e libera o lembrete da nova data', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue(agAtual)
+    mockDb.select.mockReturnValue(mkSelectLimitChain([]))
+    const chain = mkUpdateChain()
+    mockDb.update.mockReturnValue(chain)
+    mkInsertSimples()
+    mockEnviarEmail.mockResolvedValue({ sucesso: true, idMensagem: 'm-1' })
+
+    const resultado = await editarAgendamento('ag-1', null, makeFormData({ ...agValido, data_agendada: '2025-05-17' }))
+
+    expect(resultado).toEqual({ ok: true })
+    expect(chain.set).toHaveBeenCalledWith(
+      expect.objectContaining({ dataAgendada: '2025-05-17', lembreteEnviado: false })
+    )
+    expect(emailAgendamentoAlterado).toHaveBeenCalledWith(
+      expect.objectContaining({ dataAgendada: '2025-05-17', dataAnterior: '2025-05-10', horaAnterior: '09:00' })
+    )
+    expect(mockEnviarEmail).toHaveBeenCalledWith(['pedro@exemplo.com'], expect.objectContaining({ assunto: 'assunto-alterado' }))
+  })
+
+  it('não avisa quando o agendamento já foi cancelado ou realizado', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue({ ...agAtual, status: 'cancelado' })
+    mockDb.select.mockReturnValue(mkSelectLimitChain([]))
+    mockDb.update.mockReturnValue(mkUpdateChain())
+
+    await editarAgendamento('ag-1', null, makeFormData({ ...agValido, data_agendada: '2025-05-17' }))
+    expect(mockEnviarEmail).not.toHaveBeenCalled()
+  })
+
+  it('recusa data ou horário bloqueado', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue(agAtual)
+    mockDb.select.mockReturnValue(mkSelectLimitChain([{ id: 'bloq-1' }]))
+
+    const resultado = await editarAgendamento('ag-1', null, makeFormData({ ...agValido, data_agendada: '2025-05-17' }))
+
+    expect(resultado).toEqual({ erro: 'Essa data ou horário está bloqueado na agenda.', campo: 'data_agendada' })
+    expect(mockDb.update).not.toHaveBeenCalled()
+  })
+
+  it('inscrição em evento não confere bloqueios da agenda de atendimentos', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue({ ...agAtual, eventoId: 'ev-1' })
+    mockDb.update.mockReturnValue(mkUpdateChain())
+    mkInsertSimples()
+    mockEnviarEmail.mockResolvedValue({ sucesso: true, idMensagem: 'm-1' })
+
+    const resultado = await editarAgendamento('ag-1', null, makeFormData({ ...agValido, data_agendada: '2025-05-17' }))
+    expect(resultado).toEqual({ ok: true })
+    expect(mockDb.select).not.toHaveBeenCalled()
+  })
+
+  it('horário ocupado por outro agendamento vira mensagem clara (23P01)', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue(agAtual)
+    mockDb.select.mockReturnValue(mkSelectLimitChain([]))
+    mockDb.update.mockReturnValue(mkUpdateChain(erroPg('23P01')))
+
+    const resultado = await editarAgendamento('ag-1', null, makeFormData({ ...agValido, hora_inicio: '10:00', hora_fim: '11:00' }))
+    expect(resultado).toEqual({ erro: 'Já existe outro agendamento nesse horário.', campo: 'hora_fim' })
+  })
+
+  it('agendamento inexistente', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue(undefined)
+    const resultado = await editarAgendamento('ag-x', null, makeFormData(agValido))
+    expect(resultado).toEqual({ erro: 'Agendamento não encontrado.' })
   })
 
   it('retorna erro quando hora_fim <= hora_inicio', async () => {
@@ -796,6 +976,7 @@ describe('editarAgendamento', () => {
   })
 
   it('retorna erro de DB', async () => {
+    mockDb.query.agendamentos.findFirst.mockResolvedValue(agAtual)
     mockDb.update.mockReturnValue(mkUpdateChain(new Error('update fail')))
     const fd = makeFormData(agValido)
     const resultado = await editarAgendamento('ag-1', null, fd)

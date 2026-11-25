@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useActionState } from 'react'
+import { CampoIsca } from '@/components/shared/CampoIsca'
 import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
 import { inscreverEmEvento, type EstadoFormAgendamento } from '@/lib/actions/booking'
 import { Button } from '@/components/ui/button'
@@ -61,6 +62,7 @@ export function EventoInscricaoForm({
   return (
     <FormSemReset action={action} className="space-y-5">
       <input type="hidden" name="evento_id" value={eventoId} />
+      <CampoIsca />
 
       {/* Seleção de data */}
       <div className="space-y-2">

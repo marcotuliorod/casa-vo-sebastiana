@@ -4,58 +4,90 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { and, count, eq, inArray, notInArray, sql } from 'drizzle-orm'
+import { and, count, eq, gt, inArray, isNull, lt, notInArray, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { agendamentos, clientes, datasBloqueadas, eventos, gradeHorarios, mediuns } from '@/lib/db/schema'
 import { mensagemErro, codigoPg } from '@/lib/db/errors'
 import { verificarAdmin } from '@/lib/auth/admin'
-import { emailAtribuicaoMedium, emailCancelamento } from '@/lib/email/templates'
+import {
+  emailAgendamentoAlterado,
+  emailAgendamentoConfirmado,
+  emailAtribuicaoMedium,
+  emailCancelamento,
+} from '@/lib/email/templates'
 import { enviarEmailComFila } from '@/lib/email/envio'
 import { listaDeEmails } from '@/lib/email/cliente'
 import type { AppointmentStatus } from '@/types/database'
 
-// Atualizar status de um agendamento
+const BASE_URL_PADRAO = 'http://localhost:3000'
+
+/** Dados do agendamento usados nos e-mails ao consulente. */
+async function buscarParaEmail(id: string) {
+  return db.query.agendamentos.findFirst({
+    where: eq(agendamentos.id, id),
+    with: { cliente: true, evento: { columns: { titulo: true } } },
+  })
+}
+
+// Atualizar status de um agendamento.
+// Confirmar avisa o consulente ("confirmado"); cancelar avisa com o motivo, se houver.
+// Falha de envio vira item da fila (email_queue), nunca impede a mudança de status.
 export async function atualizarStatusAgendamento(
   id: string,
-  novoStatus: AppointmentStatus
+  novoStatus: AppointmentStatus,
+  motivo?: string
 ): Promise<{ erro?: string }> {
   const erroAuth = await verificarAdmin()
   if (erroAuth) return { erro: erroAuth }
 
+  const motivoLimpo = motivo?.trim().slice(0, 300) || null
+
+  let antes
   try {
-    await db.update(agendamentos).set({ status: novoStatus }).where(eq(agendamentos.id, id))
+    antes = await buscarParaEmail(id)
+    if (!antes) return { erro: 'Agendamento não encontrado.' }
+    await db
+      .update(agendamentos)
+      .set({
+        status: novoStatus,
+        ...(novoStatus === 'cancelado' ? { motivoCancelamento: motivoLimpo } : {}),
+      })
+      .where(eq(agendamentos.id, id))
   } catch (erro) {
     return { erro: mensagemErro(erro) }
   }
 
-  // GAP-01: avisar o consulente por e-mail quando o admin cancela.
-  // Falha de envio vira item da fila (email_queue), nunca impede o cancelamento.
-  if (novoStatus === 'cancelado') {
-    try {
-      const ag = await db.query.agendamentos.findFirst({
-        where: eq(agendamentos.id, id),
-        with: { cliente: true },
-      })
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? BASE_URL_PADRAO
+  const info = {
+    nomeCliente: antes.cliente.nome,
+    dataAgendada: antes.dataAgendada,
+    horaInicio: antes.horaInicio.slice(0, 5),
+    horaFim: antes.horaFim.slice(0, 5),
+    tokenPublico: antes.tokenPublico,
+    baseUrl,
+  }
 
-      if (ag) {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-        await enviarEmailComFila({
-          agendamentoId: ag.id,
-          para: listaDeEmails(ag.cliente.email),
-          email: emailCancelamento({
-            nomeCliente: ag.cliente.nome,
-            dataAgendada: ag.dataAgendada,
-            horaInicio: ag.horaInicio.slice(0, 5),
-            tokenPublico: ag.tokenPublico,
-            baseUrl,
-          }),
-          evento: 'cancelamento',
-          tipo: 'cancelamento',
-        })
-      }
-    } catch (err) {
-      console.error('[E-mail] Falha ao preparar e-mail de cancelamento:', err)
+  try {
+    if (novoStatus === 'confirmado' && antes.status === 'pendente') {
+      await enviarEmailComFila({
+        agendamentoId: antes.id,
+        para: listaDeEmails(antes.cliente.email),
+        email: emailAgendamentoConfirmado({ ...info, tituloEvento: antes.evento?.titulo }),
+        evento: 'confirmacao_casa',
+        tipo: 'confirmacao_casa',
+      })
     }
+    if (novoStatus === 'cancelado' && antes.status !== 'cancelado') {
+      await enviarEmailComFila({
+        agendamentoId: antes.id,
+        para: listaDeEmails(antes.cliente.email),
+        email: emailCancelamento({ ...info, motivo: motivoLimpo }),
+        evento: 'cancelamento',
+        tipo: 'cancelamento',
+      })
+    }
+  } catch (err) {
+    console.error('[E-mail] Falha ao preparar e-mail de mudança de status:', mensagemErro(err))
   }
 
   revalidatePath('/admin/agendamentos')
@@ -540,12 +572,70 @@ export async function editarAgendamento(
     return { erro: 'Hora de fim deve ser posterior à hora de início.', campo: 'hora_fim' }
   }
 
+  let antes
   try {
+    antes = await buscarParaEmail(id)
+    if (!antes) return { erro: 'Agendamento não encontrado.' }
+
+    const mudouHorario =
+      antes.dataAgendada !== data_agendada ||
+      antes.horaInicio.slice(0, 5) !== hora_inicio ||
+      antes.horaFim.slice(0, 5) !== hora_fim
+
+    // Atendimentos (não eventos) não podem cair num dia ou horário bloqueado
+    if (mudouHorario && !antes.eventoId) {
+      const [bloqueio] = await db
+        .select({ id: datasBloqueadas.id })
+        .from(datasBloqueadas)
+        .where(
+          and(
+            eq(datasBloqueadas.dataBloqueada, data_agendada),
+            or(
+              isNull(datasBloqueadas.horaInicio),
+              and(lt(datasBloqueadas.horaInicio, hora_fim), gt(datasBloqueadas.horaFim, hora_inicio))
+            )
+          )
+        )
+        .limit(1)
+      if (bloqueio) {
+        return { erro: 'Essa data ou horário está bloqueado na agenda.', campo: 'data_agendada' }
+      }
+    }
+
     await db
       .update(agendamentos)
-      .set({ dataAgendada: data_agendada, horaInicio: hora_inicio, horaFim: hora_fim, notas: notas || null })
+      .set({
+        dataAgendada: data_agendada,
+        horaInicio: hora_inicio,
+        horaFim: hora_fim,
+        notas: notas || null,
+        // Nova data: o lembrete da véspera precisa sair de novo
+        ...(mudouHorario ? { lembreteEnviado: false } : {}),
+      })
       .where(eq(agendamentos.id, id))
+
+    if (mudouHorario && (antes.status === 'pendente' || antes.status === 'confirmado')) {
+      await enviarEmailComFila({
+        agendamentoId: antes.id,
+        para: listaDeEmails(antes.cliente.email),
+        email: emailAgendamentoAlterado({
+          nomeCliente: antes.cliente.nome,
+          dataAgendada: data_agendada,
+          horaInicio: hora_inicio,
+          horaFim: hora_fim,
+          dataAnterior: antes.dataAgendada,
+          horaAnterior: antes.horaInicio.slice(0, 5),
+          tokenPublico: antes.tokenPublico,
+          baseUrl: process.env.NEXT_PUBLIC_BASE_URL ?? BASE_URL_PADRAO,
+        }),
+        evento: 'alteracao',
+        tipo: 'alteracao',
+      })
+    }
   } catch (erro) {
+    if (codigoPg(erro) === '23P01') {
+      return { erro: 'Já existe outro agendamento nesse horário.', campo: 'hora_fim' }
+    }
     return { erro: mensagemErro(erro) }
   }
 

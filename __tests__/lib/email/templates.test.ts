@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
+  emailAgendamentoAlterado,
+  emailAgendamentoConfirmado,
   emailAtribuicaoMedium,
   emailCancelamento,
   emailCancelamentoAdmin,
@@ -22,6 +24,45 @@ describe('templates de e-mail', () => {
     expect(e.html).toContain('href="https://agenda.exemplo.com/agendamento/tok-1"')
   })
 
+  it('pedido recebido: avisa que ainda falta a confirmação da Casa e mostra o horário completo', () => {
+    const e = emailConfirmacao({ ...BASE, horaFim: '09:30' })
+    expect(e.texto).toContain('precisa ser confirmado pela Casa')
+    expect(e.texto).toContain('09:00 às 09:30')
+  })
+
+  it('confirmado: assunto, horário e link do agendamento', () => {
+    const e = emailAgendamentoConfirmado({ ...BASE, horaFim: '09:30' })
+    expect(e.assunto).toBe('Agendamento confirmado — Casa de Vó Sebastiana')
+    expect(e.texto).toContain('Seu atendimento na Casa de Vó Sebastiana está confirmado.')
+    expect(e.texto).toContain('09:00 às 09:30')
+    expect(e.texto).toContain('https://agenda.exemplo.com/agendamento/tok-1')
+  })
+
+  it('confirmado (evento): título no assunto e nos detalhes', () => {
+    const e = emailAgendamentoConfirmado({ ...BASE, tituloEvento: 'Gira' })
+    expect(e.assunto).toBe('Inscrição confirmada: Gira — Casa de Vó Sebastiana')
+    expect(e.texto).toContain('Evento: Gira')
+  })
+
+  it('alterado: mostra data anterior e nova', () => {
+    const e = emailAgendamentoAlterado({
+      ...BASE,
+      dataAgendada: '2025-07-22',
+      horaFim: '09:30',
+      dataAnterior: '2025-07-15',
+      horaAnterior: '10:00',
+    })
+    expect(e.texto).toContain('terça-feira, 15 de julho às 10:00')
+    expect(e.texto).toContain('Nova data: terça-feira, 22 de julho de 2025')
+    expect(e.texto).toContain('Novo horário: 09:00 às 09:30')
+  })
+
+  it('cancelamento: inclui o motivo quando informado, escapado no HTML', () => {
+    expect(emailCancelamento({ ...BASE, motivo: 'Casa <fechada>' }).texto).toContain('Motivo: Casa <fechada>')
+    expect(emailCancelamento({ ...BASE, motivo: 'Casa <fechada>' }).html).toContain('Motivo: Casa &lt;fechada&gt;')
+    expect(emailCancelamento(BASE).texto).not.toContain('Motivo')
+  })
+
   it('lembrete: menciona amanhã e o link para cancelar', () => {
     const e = emailLembrete24h(BASE)
     expect(e.assunto).toMatch(/amanhã/)
@@ -37,7 +78,8 @@ describe('templates de e-mail', () => {
   it('evento: título no assunto e intervalo de horário', () => {
     const info = { nomeCliente: 'Maria', tituloEvento: 'Gira', dataEvento: '2025-07-15', horaInicio: '19:00', horaFim: '21:00', tokenPublico: 'tok-1', baseUrl: 'https://x' }
     expect(emailConfirmacaoEvento(info).assunto).toContain('Gira')
-    expect(emailConfirmacaoEvento(info).texto).toContain('19:00 — 21:00')
+    expect(emailConfirmacaoEvento(info).texto).toContain('19:00 às 21:00')
+    expect(emailConfirmacaoEvento(info).texto).toContain('precisa ser confirmada pela Casa')
     expect(emailLembreteEvento(info).assunto).toContain('Gira')
   })
 

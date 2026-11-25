@@ -15,8 +15,15 @@ export const HORA_LEMBRETES_HORARIO = 9
 // Margem de 5 min para cair no ciclo horário seguinte do cron.
 const ESPERA_RETRY_MINUTOS = [55, 115, 235]
 
-export type TipoFila = 'confirmacao' | 'lembrete_24h' | 'cancelamento' | 'admin' | 'medium'
-export type EventoLog = 'confirmacao_agendamento' | 'lembrete_24h' | 'cancelamento'
+export type TipoFila =
+  | 'confirmacao'
+  | 'lembrete_24h'
+  | 'cancelamento'
+  | 'admin'
+  | 'medium'
+  | 'confirmacao_casa'
+  | 'alteracao'
+export type EventoLog = 'confirmacao_agendamento' | 'lembrete_24h' | 'cancelamento' | 'confirmacao_casa' | 'alteracao'
 
 export interface ItemFilaParaAvaliar {
   tipo: string
@@ -60,6 +67,10 @@ export function eventoLogDoTipo(tipo: string): EventoLog | null {
       return 'lembrete_24h'
     case 'cancelamento':
       return 'cancelamento'
+    case 'confirmacao_casa':
+      return 'confirmacao_casa'
+    case 'alteracao':
+      return 'alteracao'
     default:
       return null
   }
