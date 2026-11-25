@@ -538,9 +538,19 @@ Isso desativa o `proxy` (Caddy) e publica o `app` por labels do Traefik (`docker
 
 ### 4. Deploy de atualizações
 
+**Automático:** depois de cada merge no `main` com CI verde, o workflow `Deploy`
+(`.github/workflows/deploy.yml`) entra no servidor por SSH e roda `scripts/deploy.sh`. Precisa de
+uma configuração única (chave SSH e segredos no GitHub) — passo a passo em
+[`docs/deploy-automatico.md`](docs/deploy-automatico.md). Sem ela, o workflow só avisa e não faz nada.
+
+**À mão**, no servidor, dentro da pasta do projeto:
+
 ```bash
-git pull && docker compose up -d --build && docker compose run --rm migrate
+git pull --ff-only && ./scripts/deploy.sh
 ```
+
+O script reconstrói as imagens, aplica as migrations **antes** de trocar o app e sobe a nova
+versão esperando o healthcheck (`docker compose up -d --wait`).
 
 ### 5. Backups
 
