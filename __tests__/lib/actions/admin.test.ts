@@ -125,7 +125,8 @@ function makeFormData(fields: Record<string, string>): FormData {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  process.env.ADMIN_EMAILS = '' // sem restrição de email (qualquer user autenticado é admin)
+  // O usuário padrão dos testes (admin@test.com) é o admin autorizado
+  process.env.ADMIN_EMAILS = 'admin@test.com'
 
   // Por padrão, retornar admin autorizado
   mockAuth.mockResolvedValue(mkSessionClient({ email: 'admin@test.com', id: 'uid-admin' }))

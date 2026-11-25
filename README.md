@@ -172,7 +172,7 @@ Acesse: https://localhost (certificado local automático do Caddy)
 | `EMAIL_FROM` | Não | Remetente dos e-mails do sistema (domínio verificado no Resend). Vazio = usa `AUTH_EMAIL_FROM` |
 | `EMAIL_REPLY_TO` | Não | Endereço que recebe as respostas dos consulentes |
 | `CRON_SECRET` | Sim | Token para autenticar chamadas do cron (mínimo 32 caracteres) |
-| `ADMIN_EMAILS` | Não | Lista de e-mails autorizados no `/admin`, separados por vírgula. Vazio = qualquer usuário autenticado |
+| `ADMIN_EMAILS` | Não | Lista de e-mails autorizados no `/admin`, separados por vírgula. Vazio = só os e-mails de `ADMIN_EMAIL_NOTIFICACOES`; os dois vazios = ninguém entra |
 | `ADMIN_EMAIL_NOTIFICACOES` | Não | E-mails (separados por vírgula) que recebem avisos de novos agendamentos, inscrições e cancelamentos |
 | `NEXT_PUBLIC_BASE_URL` | Sim | URL base para os links nos e-mails |
 
@@ -464,9 +464,9 @@ acrescentou). Quem passa do limite vê "Muitas tentativas em pouco tempo".
 3. Receba o magic link por e-mail via Resend (válido por 24h)
 4. Clique no link → redireciona para `/admin`
 
-`proxy.ts` protege todas as rotas `/admin/*`: exige sessão Auth.js válida (JWT) **e**, se
-`ADMIN_EMAILS` estiver configurado, que o e-mail do usuário esteja na lista — quem não estiver é
-redirecionado para `/auth/login`, mesmo com uma sessão válida. `app/admin/layout.tsx` repete a
+`proxy.ts` protege todas as rotas `/admin/*`: exige sessão Auth.js válida (JWT) **e** que o e-mail do usuário esteja em
+`ADMIN_EMAILS` (ou, se essa lista estiver vazia, em `ADMIN_EMAIL_NOTIFICACOES`; com as duas vazias
+ninguém entra) — quem não estiver é redirecionado para `/auth/login`, mesmo com uma sessão válida. `app/admin/layout.tsx` repete a
 mesma checagem (via `lib/auth/admin.ts`) como defesa em profundidade. As Server Actions de mutação
 (`lib/actions/admin.ts`, `lib/actions/recados.ts`) usam o mesmo helper.
 
