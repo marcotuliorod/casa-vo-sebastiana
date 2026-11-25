@@ -4,6 +4,11 @@ import { getAdminUser } from '@/lib/auth/admin'
 import { Logo } from '@/components/shared/Logo'
 import { AdminNav } from './AdminNav'
 
+export const metadata = {
+  title: { template: '%s · Painel da Casa', default: 'Painel da Casa' },
+  robots: { index: false, follow: false },
+}
+
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   // getUser() (dentro de getAdminUser) revalida contra o Auth server e checa ADMIN_EMAILS —
   // o middleware já faz essa checagem, isto é defesa em profundidade caso o layout seja

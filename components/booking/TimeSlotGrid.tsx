@@ -13,11 +13,11 @@ export function TimeSlotGrid({ slots, data, slotSelecionado }: TimeSlotGridProps
     return (
       <div className="rounded-xl border-2 border-dashed border-gray-200 p-10 text-center">
         <p className="text-2xl">🌙</p>
-        <p className="mt-2 text-gray-500">Não há horários disponíveis para este dia.</p>
-        <p className="text-sm text-gray-400 mt-1">Todos os horários estão preenchidos.</p>
+        <p className="mt-2 text-gray-600">Não há horários livres neste dia.</p>
+        <p className="text-sm text-gray-500 mt-1">Escolha outra data no calendário.</p>
         <Link
           href="/agendar"
-          className="inline-flex items-center justify-center mt-4 text-sm text-brand hover:underline"
+          className="inline-flex items-center justify-center mt-4 py-2 text-sm text-brand-dark underline underline-offset-2"
         >
           ← Voltar ao calendário
         </Link>
@@ -43,7 +43,7 @@ export function TimeSlotGrid({ slots, data, slotSelecionado }: TimeSlotGridProps
             )}
           >
             <span className="text-lg font-bold">{slot.hora_inicio}</span>
-            <span className="text-xs text-gray-400">até {slot.hora_fim}</span>
+            <span className="text-xs text-gray-500">até {slot.hora_fim}</span>
           </Link>
         )
       })}

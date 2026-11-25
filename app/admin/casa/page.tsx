@@ -4,7 +4,7 @@ import { getInfoCasa } from '@/lib/queries/casa'
 import { CasaForm } from './CasaForm'
 
 export const metadata = {
-  title: 'Informações da Casa | Admin — Casa de Vó Sebastiana',
+  title: 'Informações da Casa',
 }
 
 export default async function CasaPage() {

@@ -5,7 +5,7 @@ import { Logo } from '@/components/shared/Logo'
 import { emailDeContato, getInfoCasa } from '@/lib/queries/casa'
 
 export const metadata = {
-  title: 'Privacidade | Casa de Vó Sebastiana',
+  title: 'Privacidade',
 }
 
 // Lê o responsável e o contato (tela "Informações da Casa") em cada requisição, não no build

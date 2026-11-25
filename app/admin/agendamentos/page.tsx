@@ -6,7 +6,7 @@ import { listarMediuns } from '@/lib/queries/mediuns'
 import type { AppointmentStatus } from '@/types/database'
 
 export const metadata = {
-  title: 'Agendamentos | Admin — Casa de Vó Sebastiana',
+  title: 'Agendamentos',
 }
 
 interface Props {

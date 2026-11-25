@@ -43,6 +43,16 @@ export function formatarDataExtenso(data: string | Date): string {
   return format(d, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })
 }
 
+/** Só a primeira letra maiúscula: "Sexta-feira, 27 de novembro de 2026" (o CSS capitalize deixaria "De Novembro De"). */
+export function primeiraMaiuscula(texto: string): string {
+  return texto.charAt(0).toUpperCase() + texto.slice(1)
+}
+
+/** Data por extenso para exibir sozinha (título, cartão): começa com maiúscula. */
+export function formatarDataExtensoTitulo(data: string | Date): string {
+  return primeiraMaiuscula(formatarDataExtenso(data))
+}
+
 // Retorna a data de amanhã no fuso BR como string 'YYYY-MM-DD'
 export function amanha(): string {
   const hoje = toZonedTime(new Date(), FUSO_HORARIO_BR)

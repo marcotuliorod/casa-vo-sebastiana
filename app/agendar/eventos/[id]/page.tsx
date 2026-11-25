@@ -13,7 +13,7 @@ export async function generateMetadata({ params }: PageProps) {
   const { id } = await params
   const evento = await getEvento(id)
   if (!evento) return { title: 'Evento não encontrado' }
-  return { title: `${evento.titulo} — Casa de Vó Sebastiana` }
+  return { title: evento.titulo }
 }
 
 export default async function EventoPage({ params }: PageProps) {

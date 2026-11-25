@@ -9,7 +9,7 @@ import { ConsulentesManager } from './ConsulentesManager'
 import type { Cliente } from '@/types/database'
 
 export const metadata = {
-  title: 'Consulentes | Admin — Casa de Vó Sebastiana',
+  title: 'Consulentes',
 }
 
 interface ClienteComContagem extends Cliente {

@@ -3,6 +3,8 @@ import { parseISO } from 'date-fns'
 import {
   formatarData,
   formatarDataExtenso,
+  formatarDataExtensoTitulo,
+  primeiraMaiuscula,
   amanha,
   ehDataPassada,
   diaDaSemana,
@@ -23,6 +25,18 @@ describe('lib/utils/date', () => {
 
     it('formata dia com zero à esquerda', () => {
       expect(formatarData('2025-01-05')).toBe('05/01/2025')
+    })
+  })
+
+  // ─── primeira letra maiúscula ────────────────────────────────
+  describe('formatarDataExtensoTitulo', () => {
+    it('só a primeira letra maiúscula (sem "De Novembro De")', () => {
+      expect(formatarDataExtensoTitulo('2026-11-27')).toBe('Sexta-feira, 27 de novembro de 2026')
+    })
+
+    it('primeiraMaiuscula não mexe no resto do texto', () => {
+      expect(primeiraMaiuscula('quarta-feira, 2 de dezembro')).toBe('Quarta-feira, 2 de dezembro')
+      expect(primeiraMaiuscula('')).toBe('')
     })
   })
 

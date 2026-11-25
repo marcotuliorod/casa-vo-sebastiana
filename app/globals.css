@@ -14,7 +14,7 @@
     --popover-foreground: 220 23% 18%;
 
     /* Azul Sereno acessível — CTAs e interativos */
-    --primary: 207 53% 54%;           /* #4A86C8 */
+    --primary: 211 58% 42%;           /* #2D69AA — contraste 5,7:1 com branco */
     --primary-foreground: 0 0% 100%;  /* branco */
 
     /* Areia Sagrada — backgrounds secundários */
@@ -29,7 +29,7 @@
     --accent-foreground: 220 23% 18%;
 
     /* Vermelho suave para erros */
-    --destructive: 0 65% 67%;         /* #E57373 */
+    --destructive: 0 66% 47%;         /* #C62828 — contraste 5,6:1 com branco */
     --destructive-foreground: 0 0% 100%;
 
     /* Bordas em azul-cinza suave */

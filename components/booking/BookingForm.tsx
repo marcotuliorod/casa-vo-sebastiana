@@ -3,13 +3,14 @@
 import { useActionState, useState } from 'react'
 import { CampoIsca } from '@/components/shared/CampoIsca'
 import { ConsentimentoDados } from '@/components/booking/ConsentimentoDados'
+import { usePhoneMask } from '@/components/booking/usePhoneMask'
 import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { criarAgendamento, type EstadoFormAgendamento } from '@/lib/actions/booking'
-import { formatarDataExtenso } from '@/lib/utils/date'
+import { formatarDataExtensoTitulo } from '@/lib/utils/date'
 import { cn } from '@/lib/utils/cn'
 import { Loader2 } from 'lucide-react'
 import Link from 'next/link'
@@ -20,35 +21,12 @@ interface BookingFormProps {
   horaFim: string
 }
 
-function usePhoneMask() {
-  const [value, setValue] = useState('')
-
-  const handleInput = (e: React.FormEvent<HTMLInputElement>) => {
-    let v = e.currentTarget.value.replace(/\D/g, '')
-    if (v.length > 11) v = v.slice(0, 11)
-    let formatted = v
-    if (v.length === 11) {
-      formatted = `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`
-    } else if (v.length === 10) {
-      formatted = `(${v.slice(0, 2)}) ${v.slice(2, 6)}-${v.slice(6)}`
-    } else if (v.length > 6) {
-      formatted = `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`
-    } else if (v.length > 2) {
-      formatted = `(${v.slice(0, 2)}) ${v.slice(2)}`
-    } else if (v.length > 0) {
-      formatted = `(${v}`
-    }
-    setValue(formatted)
-  }
-
-  return [value, handleInput] as const
-}
 
 function AppointmentSummary({ data, horaInicio, horaFim }: BookingFormProps) {
   return (
     <div className="rounded-xl bg-brand-areia/40 p-4 text-center border border-brand-muted/30">
       <p className="text-sm text-brand font-medium">Você está agendando para:</p>
-      <p className="text-lg font-bold text-brand-dark capitalize">{formatarDataExtenso(data)}</p>
+      <p className="text-lg font-bold text-brand-dark">{formatarDataExtensoTitulo(data)}</p>
       <p className="text-brand">
         {horaInicio} — {horaFim}
       </p>
@@ -88,6 +66,13 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
   const [notas, setNotas] = useState('')
   const NOTAS_MAX = 500
 
+  // Campos que mostram o próprio erro; os demais (data, horário) vão para a caixa geral
+  const CAMPOS_COM_ERRO = ['nome', 'telefone', 'email', 'notas', 'consentimento']
+  const erroGeral = estado?.erro && !CAMPOS_COM_ERRO.includes(estado.campo ?? '') ? estado.erro : null
+  const erroDo = (campo: string) => (estado?.campo === campo ? estado.erro : undefined)
+  const acessivel = (campo: string) =>
+    erroDo(campo) ? { 'aria-invalid': true as const, 'aria-describedby': `${campo}-erro` } : {}
+
   return (
     <FormSemReset action={action} className="space-y-5">
       <input type="hidden" name="data" value={data} />
@@ -97,13 +82,13 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
 
       <AppointmentSummary data={data} horaInicio={horaInicio} horaFim={horaFim} />
 
-      {estado?.erro && !estado.campo && (
-        <div className="rounded-lg bg-brand-error/10 border border-brand-error/30 p-3 text-sm text-brand-error space-y-2">
-          <p>{estado.erro}</p>
-          {estado.erro.includes('horário') && (
+      {erroGeral && (
+        <div role="alert" className="rounded-lg bg-brand-error/10 border border-brand-error/30 p-3 text-sm text-brand-error space-y-2">
+          <p>{erroGeral}</p>
+          {(erroGeral.includes('horário') || erroGeral.includes('data')) && (
             <Link
               href={`/agendar/${data}`}
-              className="inline-flex items-center text-sm font-medium text-brand-error underline hover:opacity-80"
+              className="inline-flex items-center py-1 text-sm font-medium text-brand-error underline hover:opacity-80"
             >
               ← Escolher outro horário
             </Link>
@@ -119,12 +104,14 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
           placeholder="Seu nome completo"
           required
           autoComplete="name"
+          maxLength={120}
           value={nome}
           onChange={(e) => setNome(e.target.value)}
-          className={cn(estado?.campo === 'nome' && 'border-brand-error')}
+          className={cn(erroDo('nome') && 'border-brand-error')}
+          {...acessivel('nome')}
         />
-        {estado?.campo === 'nome' && (
-          <p className="text-xs text-brand-error">{estado.erro}</p>
+        {erroDo('nome') && (
+          <p id="nome-erro" role="alert" className="text-xs text-brand-error">{erroDo('nome')}</p>
         )}
       </div>
 
@@ -142,14 +129,16 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
           autoComplete="tel"
           maxLength={15}
           value={telefone}
+          inputMode="tel"
           onInput={handleTelefoneInput}
-          className={cn(estado?.campo === 'telefone' && 'border-brand-error')}
+          className={cn(erroDo('telefone') && 'border-brand-error')}
+          {...acessivel('telefone')}
         />
-        {estado?.campo === 'telefone' && (
-          <p className="text-xs text-brand-error">
-            {estado.erro === 'Telefone inválido'
+        {erroDo('telefone') && (
+          <p id="telefone-erro" role="alert" className="text-xs text-brand-error">
+            {erroDo('telefone') === 'Telefone inválido'
               ? 'Informe um celular válido com DDD, ex: (11) 99999-9999'
-              : estado.erro}
+              : erroDo('telefone')}
           </p>
         )}
       </div>
@@ -166,12 +155,14 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
           placeholder="seu@email.com"
           required
           autoComplete="email"
+          inputMode="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className={cn(estado?.campo === 'email' && 'border-brand-error')}
+          className={cn(erroDo('email') && 'border-brand-error')}
+          {...acessivel('email')}
         />
-        {estado?.campo === 'email' && (
-          <p className="text-xs text-brand-error">{estado.erro}</p>
+        {erroDo('email') && (
+          <p id="email-erro" role="alert" className="text-xs text-brand-error">{erroDo('email')}</p>
         )}
       </div>
 
@@ -183,7 +174,7 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
           </Label>
           <span className={cn(
             'text-xs tabular-nums',
-            notas.length > NOTAS_MAX * 0.9 ? 'text-brand-warning' : 'text-gray-400'
+            notas.length > NOTAS_MAX * 0.9 ? 'text-brand-warning' : 'text-gray-500'
           )}>
             {notas.length}/{NOTAS_MAX}
           </span>
@@ -196,10 +187,14 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
           maxLength={NOTAS_MAX}
           value={notas}
           onChange={(e) => setNotas(e.target.value)}
+          {...acessivel('notas')}
         />
+        {erroDo('notas') && (
+          <p id="notas-erro" role="alert" className="text-xs text-brand-error">{erroDo('notas')}</p>
+        )}
       </div>
 
-      <ConsentimentoDados erro={estado?.campo === 'consentimento' ? estado.erro : undefined} />
+      <ConsentimentoDados erro={erroDo('consentimento')} />
 
       <SubmitButton />
 

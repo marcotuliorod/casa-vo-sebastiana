@@ -17,7 +17,8 @@ interface Props {
 }
 
 export const metadata = {
-  title: 'Confirmar Agendamento | Casa de Vó Sebastiana',
+  title: 'Confirmar agendamento',
+  robots: { index: false, follow: false },
 }
 
 export default async function ConfirmarPage({ searchParams }: Props) {

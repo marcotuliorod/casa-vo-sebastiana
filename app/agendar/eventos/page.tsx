@@ -6,7 +6,7 @@ import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 export const metadata = {
-  title: 'Eventos — Casa de Vó Sebastiana',
+  title: 'Eventos',
 }
 
 // Vagas disponíveis mudam a cada inscrição — nunca prerenderizar estaticamente
@@ -39,7 +39,7 @@ export default async function EventosPublicosPage() {
         </p>
 
         {eventosDisponiveis.length === 0 ? (
-          <div className="text-center py-10 text-gray-400">
+          <div className="text-center py-10 text-gray-500">
             <CalendarRange className="h-10 w-10 mx-auto mb-3 opacity-40" />
             <p className="text-sm">Nenhum evento disponível no momento.</p>
             <p className="text-xs mt-1">Volte em breve!</p>
@@ -79,12 +79,12 @@ export default async function EventosPublicosPage() {
                         <Users className="inline h-3 w-3 mr-0.5" />
                         {totalVagas === 0
                           ? 'Esgotado'
-                          : `${totalVagas} vaga${totalVagas !== 1 ? 's' : ''} disponível`}
+                          : totalVagas === 1 ? '1 vaga disponível' : `${totalVagas} vagas disponíveis`}
                       </span>
                     </div>
                   </div>
 
-                  <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0 mt-1" />
+                  <ChevronRight className="h-4 w-4 text-gray-500 flex-shrink-0 mt-1" />
                 </Link>
               )
             })}

@@ -8,7 +8,7 @@ import { BloqueiosLista } from './BloqueiosLista'
 import type { GradeHorario, DataBloqueada } from '@/types/database'
 
 export const metadata = {
-  title: 'Disponibilidade | Admin — Casa de Vó Sebastiana',
+  title: 'Disponibilidade',
 }
 
 export default async function DisponibilidadePage() {

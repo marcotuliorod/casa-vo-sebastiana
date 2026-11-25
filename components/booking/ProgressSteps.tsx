@@ -28,7 +28,7 @@ export function ProgressSteps({ passoAtual }: ProgressStepsProps) {
                     'flex h-9 w-9 items-center justify-center rounded-full border-2 text-sm font-semibold transition-all',
                     concluido && 'border-brand bg-brand text-white',
                     atual && 'border-brand bg-white text-brand',
-                    !concluido && !atual && 'border-gray-300 bg-white text-gray-400'
+                    !concluido && !atual && 'border-gray-300 bg-white text-gray-500'
                   )}
                 >
                   {concluido ? <Check className="h-4 w-4" /> : passo.numero}
@@ -36,7 +36,7 @@ export function ProgressSteps({ passoAtual }: ProgressStepsProps) {
                 <span
                   className={cn(
                     'mt-1 text-xs font-medium',
-                    atual ? 'text-brand' : 'text-gray-400'
+                    atual ? 'text-brand' : 'text-gray-500'
                   )}
                 >
                   {passo.rotulo}
