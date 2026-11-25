@@ -1,3 +1,5 @@
+import { LIMITES, consumirLimite } from '@/lib/rate-limit'
+
 // O link do magic link é de uso único. Clientes de e-mail e scanners de segurança
 // abrem links (GET) automaticamente e gastariam o token antes do usuário clicar.
 // Por isso o e-mail aponta para /auth/confirmar, que só consome o token depois de
@@ -25,6 +27,11 @@ interface SendVerificationParams {
 }
 
 export async function enviarLinkDeAcesso({ identifier, url, provider }: SendVerificationParams) {
+  // Mais de 5 pedidos por hora para o mesmo e-mail: não envia (sem avisar quem pediu)
+  if (!consumirLimite(`login:${identifier.toLowerCase()}`, LIMITES.loginPorEmail)) {
+    console.warn('[Login] Limite de links de acesso atingido; pedido ignorado.')
+    return
+  }
   const link = montarUrlDeConfirmacao(url)
   const linkHtml = escapeHtml(link)
 

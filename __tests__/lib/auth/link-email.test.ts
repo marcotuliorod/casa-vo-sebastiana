@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { montarUrlDeConfirmacao, enviarLinkDeAcesso } from '@/lib/auth/link-email'
+import { zerarLimites } from '@/lib/rate-limit'
 
 const URL_AUTHJS =
   'https://agenda.mtrm.tech/api/auth/callback/resend?callbackUrl=https%3A%2F%2Fagenda.mtrm.tech&token=abc123&email=a%40b.com'
@@ -23,6 +24,7 @@ describe('enviarLinkDeAcesso', () => {
   const fetchMock = vi.fn()
 
   beforeEach(() => {
+    zerarLimites()
     vi.stubGlobal('fetch', fetchMock)
   })
   afterEach(() => {
@@ -53,5 +55,17 @@ describe('enviarLinkDeAcesso', () => {
     await expect(
       enviarLinkDeAcesso({ identifier: 'a@b.com', url: URL_AUTHJS, provider: { apiKey: 'x', from: 'y' } }),
     ).rejects.toThrow('Resend error')
+  })
+
+  it('passa de 5 pedidos por hora para o mesmo e-mail: o 6º não é enviado', async () => {
+    fetchMock.mockResolvedValue({ ok: true })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const pedido = { identifier: 'Admin@Casa.org', url: URL_AUTHJS, provider: { apiKey: 're_test', from: 'Casa <login@x.com>' } }
+    for (let i = 0; i < 5; i++) await enviarLinkDeAcesso(pedido)
+    expect(fetchMock).toHaveBeenCalledTimes(5)
+
+    await enviarLinkDeAcesso({ ...pedido, identifier: 'admin@casa.org' })
+    expect(fetchMock).toHaveBeenCalledTimes(5)
+    vi.mocked(console.warn).mockRestore()
   })
 })

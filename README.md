@@ -28,10 +28,13 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 - **Fluxo de agendamento em 3 passos** (mobile-first):
   1. Escolher data — calendário interativo (dias com horários ativos na grade, até 60 dias)
   2. Escolher horário — grid de slots de 30 min disponíveis
-  3. Preencher dados — nome, telefone, e-mail (obrigatório — é o canal de contato), observações
-- **Página do agendamento** acessível por link público via token (sem login)
+  3. Preencher dados — nome, telefone, e-mail (obrigatório — é o canal de contato), observações e a
+     **autorização de uso dos dados** (obrigatória; o pedido revela busca por atendimento espiritual,
+     dado sensível pela LGPD — a data fica em `clientes.consentimento_em`)
+- **Página do agendamento** acessível por link público via token (sem login), com endereço, mapa,
+  orientações e contato da Casa (tela "Informações da Casa")
 - **Auto-cancelamento** via link público
-- **Privacidade** (`/privacidade`) — o que é coletado, para quê, com quem é compartilhado e como pedir acesso, correção ou exclusão (LGPD). O contato exibido é o `EMAIL_REPLY_TO`
+- **Privacidade** (`/privacidade`) — base legal, o que é coletado, para quê, quem tem acesso, por quanto tempo e como pedir acesso, correção ou exclusão (LGPD). Responsável e contato vêm da tela "Informações da Casa" (o `EMAIL_REPLY_TO` é a reserva)
 - **Meus Agendamentos** (`/historico`) — o consulente informa o e-mail e recebe um link de acesso válido por 1 hora (ver "Histórico do consulente")
 
 ### Painel Admin (protegido por login)
@@ -40,15 +43,21 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 - Gerenciamento de disponibilidade:
   - Ativar/desativar slots da grade semanal
   - Bloquear datas ou horários específicos
-- Lista de consulentes (clientes) — excluir um consulente apaga também todo o histórico de agendamentos (pedido de exclusão de dados, LGPD); só é bloqueado se houver agendamento pendente ou confirmado
+- Confirmar (avisa o consulente por e-mail), marcar como realizado ou "não compareceu", cancelar com motivo (vai no e-mail) e editar data/horário (recusa dia bloqueado e choque de horário; avisa o consulente)
+- **Informações da Casa** (`/admin/casa`) — endereço, link do mapa, contato, orientações, política de cancelamento e responsável pelos dados; aparecem no site e nos e-mails
+- Lista de consulentes (clientes) — excluir um consulente apaga também todo o histórico de agendamentos e os registros de e-mail (pedido de exclusão de dados, LGPD); só é bloqueado se houver agendamento pendente ou confirmado
 
 ### Comunicação por e-mail
-- **Confirmação** — enviada ao consulente ao criar um agendamento ou inscrição em evento
+- **Pedido recebido** — ao criar um agendamento ou inscrição; diz que ainda falta a confirmação da Casa
+- **Confirmado** — quando a Casa confirma no painel
+- **Alteração** — quando a Casa muda a data ou o horário
 - **Lembrete** — na véspera (a partir das 09:00 BRT) para agendamentos confirmados; para eventos, `lembrete_horas` antes
-- **Cancelamento** — enviado ao consulente quando ele ou a Casa cancela
+- **Cancelamento** — enviado ao consulente quando ele ou a Casa cancela (com o motivo, se a Casa informar)
+- Os e-mails ao consulente levam endereço, mapa, contato e orientações da tela "Informações da Casa"
 - **Avisos à Casa** — novos agendamentos, inscrições e cancelamentos para `ADMIN_EMAIL_NOTIFICACOES`
 - **Aviso ao médium** — quando o admin atribui um atendimento a um médium com e-mail cadastrado
 - Falhas de envio vão para a fila `email_queue` e o cron reenvia (até 3 tentativas, validade de 48h)
+- Registros de e-mail (`logs_email` e fila resolvida) são apagados depois de 90 dias
 
 > O WhatsApp foi removido (custo das APIs). Os botões "Abrir WhatsApp" do painel são só links `wa.me` para contato manual.
 
@@ -175,6 +184,10 @@ Acesse: https://localhost (certificado local automático do Caddy)
 | `ADMIN_EMAILS` | Não | Lista de e-mails autorizados no `/admin`, separados por vírgula. Vazio = só os e-mails de `ADMIN_EMAIL_NOTIFICACOES`; os dois vazios = ninguém entra |
 | `ADMIN_EMAIL_NOTIFICACOES` | Não | E-mails (separados por vírgula) que recebem avisos de novos agendamentos, inscrições e cancelamentos |
 | `NEXT_PUBLIC_BASE_URL` | Sim | URL base para os links nos e-mails |
+| `MAX_AGENDAMENTOS_MES` | Não | Máximo de agendamentos por consulente (telefone) no mês. Vazio = sem limite |
+
+O app confere a configuração ao subir (`instrumentation.ts`): sem `DATABASE_URL` ou `AUTH_SECRET`
+ele não inicia em produção (o deploy volta para a versão anterior); as demais faltas geram aviso no log.
 
 ---
 
@@ -199,7 +212,8 @@ npm run db:studio     # abre o Drizzle Studio (explorador de dados no navegador)
 | `id` | UUID PK | Identificador único |
 | `nome` | TEXT | Nome completo |
 | `telefone` | TEXT UNIQUE | Telefone E.164 (+5511999999999) |
-| `email` | TEXT | E-mail (opcional) |
+| `email` | TEXT | E-mail (obrigatório nos pedidos novos; cadastros antigos podem não ter) |
+| `consentimento_em` | TIMESTAMPTZ | Quando a pessoa marcou a autorização de uso dos dados |
 | `notas` | TEXT | Observações internas |
 | `criado_em` | TIMESTAMPTZ | Data de criação |
 | `atualizado_em` | TIMESTAMPTZ | Atualizado automaticamente por trigger |
@@ -451,6 +465,11 @@ As ações públicas têm limite por IP (`lib/rate-limit.ts`), contado em memór
 | Agendar | 10 por hora por IP |
 | Inscrever-se em evento | 10 por hora por IP |
 | Pedir link do histórico | 5 a cada 15 min por IP; 3 links por hora por e-mail (silencioso) |
+| Agendar + inscrever-se (somados) | 3 por dia por e-mail de destino — o site não vira disparador de e-mails |
+| Link de login do painel | 5 por hora por e-mail (silencioso) |
+
+Os formulários públicos também têm um campo isca invisível (`lib/isca.ts`): preenchido, o pedido é
+recusado sem tocar no banco.
 
 O IP vem do `X-Real-Ip` ou do último endereço do `X-Forwarded-For` (o que o Traefik/Caddy
 acrescentou). Quem passa do limite vê "Muitas tentativas em pouco tempo".
@@ -461,7 +480,7 @@ acrescentou). Quem passa do limite vê "Muitas tentativas em pouco tempo".
 
 1. Acesse `/auth/login`
 2. Digite o e-mail do administrador
-3. Receba o magic link por e-mail via Resend (válido por 24h)
+3. Receba o magic link por e-mail via Resend (válido por 24h). A sessão dura 7 dias
 4. Clique no link → redireciona para `/admin`
 
 `proxy.ts` protege todas as rotas `/admin/*`: exige sessão Auth.js válida (JWT) **e** que o e-mail do usuário esteja em
@@ -482,7 +501,7 @@ provider Resend — usada em Server Actions, Server Components e na rota de API)
 
 ## Cron Job — Lembretes 24h
 
-**Schedule:** `0 12 * * *` (12:00 UTC = 09:00 BRT), disparado pelo container `cron` do Docker Compose (ver `docker/cron/`).
+**Schedule:** `0 * * * *` (de hora em hora), disparado pelo container `cron` do Docker Compose (ver `docker/cron/`). Os lembretes de horário só saem a partir das 09:00 BRT; eventos, reenvio da fila e limpeza de registros antigos rodam a cada hora. A saída aparece em `docker compose logs cron`.
 
 **Endpoint:** `GET /api/cron/lembretes`
 
@@ -492,7 +511,7 @@ Authorization: Bearer {CRON_SECRET}
 ```
 
 **Lógica:**
-1. Busca agendamentos com `status = 'confirmado'`, `data_agendada = amanhã`, `lembrete_enviado = false`
+1. Busca atendimentos (não eventos) com `status = 'confirmado'`, `data_agendada = amanhã`, `lembrete_enviado = false`
 2. Para cada agendamento: envia o lembrete por e-mail ao consulente (sem e-mail cadastrado → pula)
 3. Registra resultado em `logs_email`
 4. Marca `lembrete_enviado = true` (idempotente — não envia duplicatas)
@@ -551,8 +570,10 @@ segredos no GitHub — o repositório é público. Configuração única (poucos
 git pull --ff-only && ./scripts/deploy.sh
 ```
 
-O script reconstrói as imagens, aplica as migrations **antes** de trocar o app e sobe a nova
-versão esperando o healthcheck (`docker compose up -d --wait`).
+O script guarda a versão no ar como `:anterior`, reconstrói as imagens (inclusive a das
+migrations), faz backup, aplica as migrations **antes** de trocar o app e sobe a nova versão
+esperando o healthcheck; se ela não ficar saudável, volta sozinho para a anterior. Falhas chegam
+por e-mail. Voltar versão, restaurar backup, trocar segredos e alertas: [`docs/operacao.md`](docs/operacao.md).
 
 ### 5. Backups
 

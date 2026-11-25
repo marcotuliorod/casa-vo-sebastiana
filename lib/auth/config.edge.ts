@@ -11,13 +11,15 @@
 import type { NextAuthConfig } from 'next-auth'
 
 export const authConfig: NextAuthConfig = {
-  // Self-hosted atrás do proxy Caddy (Fase 0) — sem isso o Auth.js rejeita
+  // Self-hosted atrás do proxy (Traefik na VPS, ou Caddy) — sem isso o Auth.js rejeita
   // qualquer Host header com UntrustedHost (proteção pensada pra quem não está
   // atrás de uma plataforma que já valida isso, como a Vercel).
   trustHost: true,
   providers: [],
   session: {
     strategy: 'jwt',
+    // 7 dias (o padrão é 30): a sessão é um token assinado, sem como revogar antes
+    maxAge: 7 * 24 * 60 * 60,
   },
   pages: {
     signIn: '/auth/login',
