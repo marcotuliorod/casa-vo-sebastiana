@@ -27,6 +27,7 @@ vi.mock('@/lib/email/cliente', async (importOriginal) => ({
 }))
 
 import { GET } from '@/app/api/cron/lembretes/route'
+import { db } from '@/lib/db'
 import { enviarEmail } from '@/lib/email/cliente'
 import { getAgendamentosParaLembrete } from '@/lib/queries/appointments'
 
@@ -63,6 +64,7 @@ function lembreteDeAmanha(email: string | null) {
     id: 'a2',
     data_agendada: '2026-11-23',
     hora_inicio: '09:00:00',
+    hora_fim: '10:00:00',
     token_publico: 'tok',
     clientes: { nome: 'Maria', telefone: '+5511999990000', email },
   }
@@ -224,5 +226,62 @@ describe('GET /api/cron/lembretes', () => {
   it('rejeita sem o segredo do cron', async () => {
     const res = await GET(new Request('http://app/api/cron/lembretes') as never)
     expect(res.status).toBe(401)
+  })
+
+  it.each([`Bearer ${'y'.repeat(40)}`, `Bearer ${SEGREDO}x`, 'Bearer '])(
+    'rejeita segredo errado (%s)',
+    async (cabecalho) => {
+      const res = await GET(
+        new Request('http://app/api/cron/lembretes', { headers: { authorization: cabecalho } }) as never
+      )
+      expect(res.status).toBe(401)
+    }
+  )
+
+  describe('lembrete de evento (hora do evento no horário de Brasília)', () => {
+    // Evento às 19:00 de Brasília (22:00 UTC) com lembrete 3 h antes: 16:00 BRT (19:00 UTC)
+    const inscricao = {
+      id: 'e1',
+      dataAgendada: '2026-11-22',
+      horaInicio: '19:00:00',
+      horaFim: '21:00:00',
+      tokenPublico: 'tok-e',
+      cliente: { nome: 'Maria', email: 'maria@exemplo.com' },
+      evento: { titulo: 'Gira de Pretos Velhos', horaInicio: '19:00:00', lembreteHoras: 3 },
+    }
+
+    beforeEach(() => {
+      vi.mocked(db.query.agendamentos.findMany).mockResolvedValue([inscricao] as never)
+      vi.mocked(getAgendamentosParaLembrete).mockResolvedValue([])
+      filaMock.mockResolvedValue([])
+      mockEnviarEmail.mockResolvedValue({ sucesso: true, idMensagem: 'm3' })
+    })
+
+    it('não envia antes da hora do lembrete (14:00 BRT)', async () => {
+      vi.setSystemTime(new Date('2026-11-22T17:00:00Z'))
+      const res = await (await GET(req())).json()
+      expect(mockEnviarEmail).not.toHaveBeenCalled()
+      expect(res.eventos.processados).toBe(0)
+    })
+
+    it('envia depois da hora do lembrete e antes do evento (16:30 BRT)', async () => {
+      vi.setSystemTime(new Date('2026-11-22T19:30:00Z'))
+      const res = await (await GET(req())).json()
+      expect(mockEnviarEmail).toHaveBeenCalledWith(
+        ['maria@exemplo.com'],
+        expect.objectContaining({ assunto: expect.stringContaining('Gira de Pretos Velhos') })
+      )
+      expect(res.eventos.processados).toBe(1)
+    })
+
+    it('não envia depois que o evento começou (19:30 BRT)', async () => {
+      vi.setSystemTime(new Date('2026-11-22T22:30:00Z'))
+      await GET(req())
+      expect(mockEnviarEmail).not.toHaveBeenCalled()
+    })
+
+    afterEach(() => {
+      vi.mocked(db.query.agendamentos.findMany).mockResolvedValue([])
+    })
   })
 })

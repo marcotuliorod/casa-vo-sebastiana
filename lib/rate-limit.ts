@@ -9,13 +9,22 @@ import { headers } from 'next/headers'
 
 export const MENSAGEM_LIMITE = 'Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente novamente.'
 
+export const MENSAGEM_LIMITE_EMAIL =
+  'Este e-mail já fez vários pedidos hoje. Aguarde a resposta da Casa ou tente novamente amanhã.'
+
+
 /** Limites usados pelas actions: máximo de tentativas por janela. */
 export const LIMITES = {
   agendarPorIp: { max: 10, janelaMs: 60 * 60 * 1000 },
   eventoPorIp: { max: 10, janelaMs: 60 * 60 * 1000 },
   historicoPorIp: { max: 5, janelaMs: 15 * 60 * 1000 },
   historicoPorEmail: { max: 3, janelaMs: 60 * 60 * 1000 },
+  // Cada pedido manda e-mail para o endereço digitado: freia o uso do site para
+  // disparar e-mails a terceiros (protege a reputação do domínio no Resend).
+  pedidosPorEmail: { max: 3, janelaMs: 24 * 60 * 60 * 1000 },
 } as const
+
+const MAIOR_JANELA_MS = Math.max(...Object.values(LIMITES).map((l) => l.janelaMs))
 
 export interface Limite {
   max: number
@@ -30,7 +39,7 @@ const tentativas = new Map<string, number[]>()
 function limpar(agora: number) {
   for (const [chave, lista] of tentativas) {
     // Sem saber a janela de cada chave, descarta o que passou da maior delas
-    if (lista.length === 0 || lista[lista.length - 1] <= agora - 60 * 60 * 1000) {
+    if (lista.length === 0 || lista[lista.length - 1] <= agora - MAIOR_JANELA_MS) {
       tentativas.delete(chave)
     }
   }

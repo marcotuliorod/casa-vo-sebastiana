@@ -23,7 +23,8 @@ import { normalizarTelefone, validarTelefone } from '@/lib/utils/phone'
 import { dataLimiteAgendamento, ehDataPassada, hojeBr, horaAgoraBr } from '@/lib/utils/date'
 import { enviarEmailComFila } from '@/lib/email/envio'
 import { listaDeEmails } from '@/lib/email/cliente'
-import { LIMITES, MENSAGEM_LIMITE, consumirLimite, ipDaRequisicao } from '@/lib/rate-limit'
+import { LIMITES, MENSAGEM_LIMITE, MENSAGEM_LIMITE_EMAIL, consumirLimite, ipDaRequisicao } from '@/lib/rate-limit'
+import { MENSAGEM_ISCA, campoIscaPreenchido } from '@/lib/isca'
 
 // Campos do consulente, comuns ao agendamento e à inscrição em evento
 const campoNome = z
@@ -76,6 +77,7 @@ export async function criarAgendamento(
   _estado: EstadoFormAgendamento,
   formData: FormData
 ): Promise<EstadoFormAgendamento> {
+  if (campoIscaPreenchido(formData)) return { erro: MENSAGEM_ISCA }
   const dados = Object.fromEntries(formData.entries())
 
   const resultado = schemaCriarAgendamento.safeParse(dados)
@@ -142,6 +144,10 @@ export async function criarAgendamento(
   )
   if (!slotValido) {
     return { erro: 'Este horário não está mais disponível. Por favor, escolha outro.' }
+  }
+
+  if (!consumirLimite(`pedidos:${email}`, LIMITES.pedidosPorEmail)) {
+    return { erro: MENSAGEM_LIMITE_EMAIL, campo: 'email' }
   }
 
   // 1. Cadastro do cliente (por telefone)
@@ -229,6 +235,7 @@ export async function inscreverEmEvento(
   _estado: EstadoFormAgendamento,
   formData: FormData
 ): Promise<EstadoFormAgendamento> {
+  if (campoIscaPreenchido(formData)) return { erro: MENSAGEM_ISCA }
   const dados = Object.fromEntries(formData.entries())
   const resultado = schemaInscreverEvento.safeParse(dados)
 
@@ -260,6 +267,10 @@ export async function inscreverEmEvento(
   })
   if (!ocorrenciaValida) {
     return { erro: 'Data inválida para este evento.' }
+  }
+
+  if (!consumirLimite(`pedidos:${email}`, LIMITES.pedidosPorEmail)) {
+    return { erro: MENSAGEM_LIMITE_EMAIL, campo: 'email' }
   }
 
   // 3–5. Conferir vagas, salvar o cliente e inscrever numa transação só.

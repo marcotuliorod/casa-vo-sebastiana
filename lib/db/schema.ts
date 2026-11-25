@@ -42,6 +42,8 @@ export const emailEventoEnum = pgEnum('email_evento', [
   'confirmacao_agendamento',
   'lembrete_24h',
   'cancelamento',
+  'confirmacao_casa',
+  'alteracao',
 ])
 
 export const emailStatusEnum = pgEnum('email_status', ['enviado', 'falhou'])
@@ -242,7 +244,7 @@ export const emailQueue = pgTable(
     index('email_queue_pendentes').on(t.status, t.proximoRetry).where(sql`${t.status} = 'pendente'`),
     check(
       'email_queue_tipo_check',
-      sql`${t.tipo} IN ('confirmacao', 'lembrete_24h', 'cancelamento', 'admin', 'medium')`
+      sql`${t.tipo} IN ('confirmacao', 'lembrete_24h', 'cancelamento', 'admin', 'medium', 'confirmacao_casa', 'alteracao')`
     ),
     check('email_queue_status_check', sql`${t.status} IN ('pendente', 'enviado', 'falhou')`),
   ]

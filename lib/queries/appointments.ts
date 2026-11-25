@@ -1,6 +1,7 @@
 // Queries de agendamentos para o painel admin e área pública
 
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
+import { addDays, endOfMonth, format, parseISO } from 'date-fns'
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { agendamentos, clientes } from '@/lib/db/schema'
@@ -47,22 +48,18 @@ export async function listarAgendamentos(filtros?: {
         break
       }
       case 'semana': {
-        const dia = agora.getDay()
-        const offsetSeg = dia === 0 ? -6 : 1 - dia
-        const segunda = new Date(agora)
-        segunda.setDate(agora.getDate() + offsetSeg)
-        const domingo = new Date(segunda)
-        domingo.setDate(segunda.getDate() + 6)
+        // Segunda a domingo da semana atual, no horário de Brasília
+        const diaSemana = Number(formatInTimeZone(agora, TZ, 'i')) // 1 = segunda … 7 = domingo
+        const segunda = addDays(parseISO(hoje), 1 - diaSemana)
         condicoes.push(
-          gte(agendamentos.dataAgendada, formatInTimeZone(segunda, TZ, 'yyyy-MM-dd')),
-          lte(agendamentos.dataAgendada, formatInTimeZone(domingo, TZ, 'yyyy-MM-dd'))
+          gte(agendamentos.dataAgendada, format(segunda, 'yyyy-MM-dd')),
+          lte(agendamentos.dataAgendada, format(addDays(segunda, 6), 'yyyy-MM-dd'))
         )
         break
       }
       case 'mes': {
-        const mesInicio = formatInTimeZone(agora, TZ, 'yyyy-MM') + '-01'
-        const proximoMes = new Date(agora.getFullYear(), agora.getMonth() + 1, 1)
-        const mesFim = formatInTimeZone(new Date(proximoMes.getTime() - 1), TZ, 'yyyy-MM-dd')
+        const mesInicio = hoje.slice(0, 7) + '-01'
+        const mesFim = format(endOfMonth(parseISO(hoje)), 'yyyy-MM-dd')
         condicoes.push(gte(agendamentos.dataAgendada, mesInicio), lte(agendamentos.dataAgendada, mesFim))
         break
       }
@@ -196,7 +193,9 @@ export async function getAgendamentosParaLembrete(data: string) {
     where: and(
       eq(agendamentos.dataAgendada, data),
       eq(agendamentos.status, 'confirmado'),
-      eq(agendamentos.lembreteEnviado, false)
+      eq(agendamentos.lembreteEnviado, false),
+      // Inscrições em eventos têm lembrete próprio (lembrete_horas do evento)
+      isNull(agendamentos.eventoId)
     ),
     with: { cliente: true },
   })

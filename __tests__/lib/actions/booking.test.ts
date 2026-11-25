@@ -43,7 +43,8 @@ import { getSlotsDisponiveis } from '@/lib/queries/availability'
 import { getEvento, contarInscritosOcorrencia } from '@/lib/queries/eventos'
 import type { Evento } from '@/types/database'
 import { cancelarAgendamento, criarAgendamento, inscreverEmEvento } from '@/lib/actions/booking'
-import { MENSAGEM_LIMITE, zerarLimites } from '@/lib/rate-limit'
+import { MENSAGEM_LIMITE, MENSAGEM_LIMITE_EMAIL, zerarLimites } from '@/lib/rate-limit'
+import { MENSAGEM_ISCA } from '@/lib/isca'
 
 type MockDb = {
   insert: ReturnType<typeof vi.fn>
@@ -674,5 +675,74 @@ describe('limite de tentativas', () => {
     }
     expect(await inscreverEmEvento(null, formInscricao())).toEqual({ erro: MENSAGEM_LIMITE })
     expect(getEvento).toHaveBeenCalledTimes(10)
+  })
+})
+
+describe('campo isca (robôs)', () => {
+  it('criarAgendamento recusa quando o campo isca vem preenchido, sem tocar no banco', async () => {
+    const r = await criarAgendamento(null, formAgendamento({ website: 'http://spam.example' }))
+    expect(r).toEqual({ erro: MENSAGEM_ISCA })
+    expect(getSlotsDisponiveis).not.toHaveBeenCalled()
+    expect(mockDb.insert).not.toHaveBeenCalled()
+    expect(mockEnviarEmail).not.toHaveBeenCalled()
+  })
+
+  it('inscreverEmEvento recusa quando o campo isca vem preenchido', async () => {
+    const r = await inscreverEmEvento(null, formInscricao({ website: 'x' }))
+    expect(r).toEqual({ erro: MENSAGEM_ISCA })
+    expect(getEvento).not.toHaveBeenCalled()
+  })
+
+  it('campo isca vazio não atrapalha', async () => {
+    capturarInserts()
+    mkEnvio()
+    const r = await criarAgendamento(null, formAgendamento({ website: '' }))
+    expect(r).toBeUndefined() // sucesso redireciona (redirect mockado)
+  })
+})
+
+describe('limite de pedidos por e-mail (protege contra disparo de e-mails)', () => {
+  it('o 4º pedido do mesmo e-mail no dia é recusado sem enviar e-mail', async () => {
+    capturarInserts()
+    mkEnvio()
+    for (let i = 0; i < 3; i++) {
+      expect(await criarAgendamento(null, formAgendamento())).toBeUndefined()
+    }
+    mockEnviarEmail.mockClear()
+
+    const r = await criarAgendamento(null, formAgendamento())
+
+    expect(r).toEqual({ erro: MENSAGEM_LIMITE_EMAIL, campo: 'email' })
+    expect(mockEnviarEmail).not.toHaveBeenCalled()
+  })
+
+  it('agendamentos e inscrições em eventos somam no mesmo limite', async () => {
+    capturarInserts()
+    mkEnvio()
+    await criarAgendamento(null, formAgendamento())
+    await criarAgendamento(null, formAgendamento())
+    await inscreverEmEvento(null, formInscricao())
+
+    expect(await inscreverEmEvento(null, formInscricao())).toEqual({ erro: MENSAGEM_LIMITE_EMAIL, campo: 'email' })
+  })
+
+  it('outro e-mail não é afetado', async () => {
+    capturarInserts()
+    mkEnvio()
+    for (let i = 0; i < 3; i++) await criarAgendamento(null, formAgendamento())
+
+    expect(await criarAgendamento(null, formAgendamento({ email: 'outra@exemplo.com' }))).toBeUndefined()
+  })
+
+  it('horário indisponível não conta como pedido', async () => {
+    vi.mocked(getSlotsDisponiveis).mockResolvedValue({ slots: [] } as never)
+    for (let i = 0; i < 5; i++) await criarAgendamento(null, formAgendamento())
+    vi.mocked(getSlotsDisponiveis).mockResolvedValue({
+      slots: [{ hora_inicio: '09:00', hora_fim: '10:00' }],
+    } as never)
+    capturarInserts()
+    mkEnvio()
+
+    expect(await criarAgendamento(null, formAgendamento())).toBeUndefined()
   })
 })

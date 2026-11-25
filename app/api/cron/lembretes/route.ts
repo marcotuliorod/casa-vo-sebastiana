@@ -10,8 +10,9 @@ import { getAgendamentosParaLembrete } from '@/lib/queries/appointments'
 import { emailConfigurado, enviarEmail, listaDeEmails, type EmailMontado } from '@/lib/email/cliente'
 import { emailLembrete24h, emailLembreteEvento } from '@/lib/email/templates'
 import { amanha } from '@/lib/utils/date'
-import { formatInTimeZone } from 'date-fns-tz'
-import { parseISO, addHours } from 'date-fns'
+import { timingSafeEqual } from 'node:crypto'
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
+import { addHours } from 'date-fns'
 import { eventoLogDoTipo, horaDeLembretesHorario, motivoDescarte, proximoRetry } from '@/lib/email/fila'
 
 /** Envia um lembrete, grava o log e marca o agendamento. Retorna true se enviou. */
@@ -44,6 +45,13 @@ async function enviarLembrete(agendamentoId: string, para: string, email: EmailM
   return true
 }
 
+/** Compara o cabeçalho com o esperado em tempo constante (não vaza o segredo pelo tempo de resposta). */
+function segredoConfere(recebido: string | null, esperado: string): boolean {
+  const a = Buffer.from(recebido ?? '')
+  const b = Buffer.from(esperado)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
 export async function GET(request: NextRequest) {
   // Verificar autorização do cron
   const authHeader = request.headers.get('authorization')
@@ -59,7 +67,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ erro: 'Configuração inválida' }, { status: 500 })
   }
 
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  if (!segredoConfere(authHeader, `Bearer ${cronSecret}`)) {
     return NextResponse.json({ erro: 'Não autorizado' }, { status: 401 })
   }
 
@@ -104,6 +112,7 @@ export async function GET(request: NextRequest) {
       nomeCliente: ag.clientes.nome,
       dataAgendada: ag.data_agendada,
       horaInicio: ag.hora_inicio.slice(0, 5),
+      horaFim: ag.hora_fim.slice(0, 5),
       tokenPublico: ag.token_publico,
       baseUrl,
     })
@@ -142,8 +151,9 @@ export async function GET(request: NextRequest) {
         continue
       }
 
-      // Calcula quando deve enviar: data_agendada + hora_inicio - lembrete_horas
-      const dataHoraEvento = parseISO(`${ag.dataAgendada}T${ag.horaInicio}`)
+      // Calcula quando deve enviar: data_agendada + hora_inicio - lembrete_horas.
+      // A data e a hora estão no horário de Brasília; o container roda em UTC.
+      const dataHoraEvento = fromZonedTime(`${ag.dataAgendada}T${ag.horaInicio}`, 'America/Sao_Paulo')
       const momentoLembrete = addHours(dataHoraEvento, -evento.lembreteHoras)
 
       // Só envia se já passou do momento do lembrete (e ainda não passou o evento)
@@ -154,6 +164,7 @@ export async function GET(request: NextRequest) {
         tituloEvento: evento.titulo,
         dataEvento: ag.dataAgendada,
         horaInicio: ag.horaInicio.slice(0, 5),
+        horaFim: ag.horaFim.slice(0, 5),
         tokenPublico: ag.tokenPublico,
         baseUrl,
       })
