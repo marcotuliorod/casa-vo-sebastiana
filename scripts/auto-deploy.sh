@@ -15,13 +15,6 @@ REPO="marcotuliorod/casa-vo-sebastiana"
 MAX_TENTATIVAS=2
 LOG="${DEPLOY_LOG:-$HOME/casa-vo-sebastiana-deploy.log}"
 
-# Mantém o log com as últimas 2000 linhas (reescreve no mesmo arquivo, que o cron abre em modo append)
-aparar_log() {
-  [ -f "$LOG" ] || return 0
-  [ "$(wc -l < "$LOG")" -gt 2500 ] || return 0
-  tail -n 2000 "$LOG" > "$LOG.tmp" && cat "$LOG.tmp" > "$LOG" && rm -f "$LOG.tmp"
-}
-
 # Situação do CI de um commit: verde, pendente, falhou ou nenhum
 situacao_ci() {
   local resposta
@@ -51,7 +44,7 @@ main() {
   flock -n 9 || exit 0
   export DEPLOY_COM_TRAVA=1
 
-  aparar_log
+  aparar_log "$LOG"
   [ -f "$ESTADO/pausado" ] && exit 0
 
   timeout 60 git fetch --quiet origin main || exit 0

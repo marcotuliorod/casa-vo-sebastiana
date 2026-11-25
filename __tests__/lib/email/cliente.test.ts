@@ -62,6 +62,23 @@ describe('enviarEmail', () => {
     })
   })
 
+  it('limita o tempo de espera do Resend (sinal de cancelamento na chamada)', async () => {
+    const fetchMock = mockFetch(200, { id: 'msg-1' })
+
+    await enviarEmail(['a@x.com'], EMAIL)
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('quando o Resend não responde a tempo, lança (e o envio cai na fila de reenvio)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+    }))
+
+    await expect(enviarEmail(['a@x.com'], EMAIL)).rejects.toThrow(/timeout/)
+  })
+
   it('inclui reply_to quando EMAIL_REPLY_TO está definido', async () => {
     process.env.EMAIL_REPLY_TO = 'casa@exemplo.com'
     const fetchMock = mockFetch(200, { id: 'msg-1' })
