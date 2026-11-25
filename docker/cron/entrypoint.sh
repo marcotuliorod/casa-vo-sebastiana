@@ -1,4 +1,4 @@
 #!/bin/sh
 set -e
-touch /var/log/cron.log
-crond -f -l 2
+# exec: o crond vira o processo principal e a saída dos jobs aparece em `docker compose logs cron`
+exec crond -f -l 2

@@ -29,6 +29,16 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*
+!.env.example
+
+# backups e dumps do banco (têm dados pessoais)
+*.dump
+*.sql.gz
+
+# worktrees e configurações locais do Claude Code
+.claude/worktrees/
+.claude/settings.local.json
 
 # docker compose — override local para expor portas (ex: Postgres pro VS Code/GUI)
 docker-compose.override.yml
