@@ -15,19 +15,24 @@ type ExecutorInsert = Pick<typeof db, 'insert'>
  * - o e-mail só é preenchido quando o cadastro antigo não tinha nenhum;
  * - o nome só é atualizado quando o e-mail informado é o mesmo do cadastro.
  * Trocar o e-mail de um consulente é tarefa da Casa, pelo painel.
+ *
+ * Grava também quando a pessoa autorizou o uso dos dados (consentimento_em),
+ * com a mesma regra do nome: só no cadastro que é dela.
  */
 export function salvarCliente(
   executor: ExecutorInsert,
   dados: { nome: string; telefone: string; email: string }
 ) {
+  const mesmoDono = sql`${clientes.email} IS NULL OR lower(${clientes.email}) = lower(excluded.email)`
   return executor
     .insert(clientes)
-    .values(dados)
+    .values({ ...dados, consentimentoEm: new Date() })
     .onConflictDoUpdate({
       target: clientes.telefone,
       set: {
-        nome: sql`CASE WHEN ${clientes.email} IS NULL OR lower(${clientes.email}) = lower(excluded.email) THEN excluded.nome ELSE ${clientes.nome} END`,
+        nome: sql`CASE WHEN ${mesmoDono} THEN excluded.nome ELSE ${clientes.nome} END`,
         email: sql`COALESCE(${clientes.email}, excluded.email)`,
+        consentimentoEm: sql`CASE WHEN ${mesmoDono} THEN excluded.consentimento_em ELSE ${clientes.consentimentoEm} END`,
       },
     })
     .returning()

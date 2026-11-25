@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react'
 import { CampoIsca } from '@/components/shared/CampoIsca'
+import { ConsentimentoDados } from '@/components/booking/ConsentimentoDados'
 import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -198,14 +199,11 @@ export function BookingForm({ data, horaInicio, horaFim }: BookingFormProps) {
         />
       </div>
 
+      <ConsentimentoDados erro={estado?.campo === 'consentimento' ? estado.erro : undefined} />
+
       <SubmitButton />
 
-      <p className="text-center text-xs text-gray-400">
-        Você receberá a confirmação por e-mail ·{' '}
-        <Link href="/privacidade" target="_blank" className="underline hover:text-gray-600">
-          Como usamos seus dados
-        </Link>
-      </p>
+      <p className="text-center text-xs text-gray-500">Você receberá a confirmação por e-mail.</p>
     </FormSemReset>
   )
 }

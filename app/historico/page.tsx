@@ -2,6 +2,7 @@
 // Só abre com o link enviado ao e-mail do consulente: o token do link fica num
 // cookie httpOnly (app/historico/acesso/route.ts) e é validado aqui.
 import Link from 'next/link'
+import { RodapePublico } from '@/components/shared/RodapePublico'
 import { cookies } from 'next/headers'
 import { Logo } from '@/components/shared/Logo'
 import { StatusBadge } from '@/components/admin/StatusBadge'
@@ -110,14 +111,12 @@ export default async function HistoricoPage({ searchParams }: Props) {
           </div>
         )}
 
-        <p className="mt-8 text-center text-xs text-gray-400">
-          🌿 Casa de Vó Sebastiana — Umbanda & Atendimento Espiritual
-        </p>
-        <div className="mt-3 text-center">
-          <Link href="/agendar" className="text-xs text-brand hover:underline">
+        <div className="mt-8 text-center">
+          <Link href="/agendar" className="inline-block py-2 text-sm text-brand-dark underline underline-offset-2">
             Fazer novo agendamento →
           </Link>
         </div>
+        <RodapePublico />
       </div>
     </div>
   )

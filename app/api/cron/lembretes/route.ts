@@ -3,7 +3,7 @@
 // Disparado pelo container `cron` do Docker Compose (ver docker/cron/)
 
 import { NextRequest, NextResponse } from 'next/server'
-import { and, eq, gte, isNotNull, lt, lte } from 'drizzle-orm'
+import { and, eq, gte, isNotNull, lt, lte, ne } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { agendamentos, emailQueue, logsEmail } from '@/lib/db/schema'
 import { getAgendamentosParaLembrete } from '@/lib/queries/appointments'
@@ -14,7 +14,13 @@ import { getInfoCasa } from '@/lib/queries/casa'
 import { timingSafeEqual } from 'node:crypto'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import { addHours } from 'date-fns'
-import { eventoLogDoTipo, horaDeLembretesHorario, motivoDescarte, proximoRetry } from '@/lib/email/fila'
+import {
+  RETENCAO_REGISTROS_EMAIL_DIAS,
+  eventoLogDoTipo,
+  horaDeLembretesHorario,
+  motivoDescarte,
+  proximoRetry,
+} from '@/lib/email/fila'
 
 /** Envia um lembrete, grava o log e marca o agendamento. Retorna true se enviou. */
 async function enviarLembrete(agendamentoId: string, para: string, email: EmailMontado): Promise<boolean> {
@@ -257,8 +263,23 @@ export async function GET(request: NextRequest) {
     else retryFalhas++
   }
 
+  // Retenção (LGPD): apaga registros de e-mail antigos, que guardam destinatários e textos
+  let registrosApagados = 0
+  try {
+    const limite = new Date(agora.getTime() - RETENCAO_REGISTROS_EMAIL_DIAS * 24 * 60 * 60 * 1000)
+    const logs = await db.delete(logsEmail).where(lt(logsEmail.criadoEm, limite)).returning({ id: logsEmail.id })
+    const fila = await db
+      .delete(emailQueue)
+      .where(and(lt(emailQueue.criadoEm, limite), ne(emailQueue.status, 'pendente')))
+      .returning({ id: emailQueue.id })
+    registrosApagados = logs.length + fila.length
+  } catch (erro) {
+    console.error('[Cron lembretes] Falha na limpeza de registros antigos:', erro instanceof Error ? erro.message : erro)
+  }
+
   return NextResponse.json({
     horario: { processados, falhas, total: agendamentosLembrete.length, data_alvo: dataAmanha, executado: rodarLembretesHorario },
+    retencao: { registros_apagados: registrosApagados },
     eventos: { processados: eventosProcessados, falhas: eventosFalhas, total: agEventos.length },
     sem_email: semEmail,
     retry: { processados: retryProcessados, falhas: retryFalhas, descartados: retryDescartados, total: fila.length },

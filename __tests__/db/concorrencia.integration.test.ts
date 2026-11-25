@@ -90,6 +90,7 @@ describe.skipIf(!DATABASE_URL)('concorrência — integração com Postgres real
         fd.set('nome', `Pessoa Teste ${i}`)
         fd.set('telefone', telefone)
         fd.set('email', `pessoa${i}@exemplo.com`)
+        fd.set('consentimento', 'sim')
         return inscreverEmEvento(null, fd)
       })
     )

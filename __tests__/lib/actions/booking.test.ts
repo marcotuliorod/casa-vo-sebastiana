@@ -49,6 +49,7 @@ import type { Evento } from '@/types/database'
 import { cancelarAgendamento, criarAgendamento, inscreverEmEvento } from '@/lib/actions/booking'
 import { MENSAGEM_LIMITE, MENSAGEM_LIMITE_EMAIL, zerarLimites } from '@/lib/rate-limit'
 import { MENSAGEM_ISCA } from '@/lib/isca'
+import { MENSAGEM_CONSENTIMENTO } from '@/lib/consentimento'
 
 type MockDb = {
   insert: ReturnType<typeof vi.fn>
@@ -137,6 +138,7 @@ function formAgendamento(campos: Record<string, string> = {}) {
     nome: 'Maria Silva',
     telefone: '11999999999',
     email: EMAIL_CONSULENTE,
+    consentimento: 'sim',
   }
   Object.entries({ ...padrao, ...campos }).forEach(([k, v]) => fd.set(k, v))
   return fd
@@ -167,6 +169,7 @@ function formInscricao(campos: Record<string, string> = {}) {
     nome: 'Maria Silva',
     telefone: '11999999999',
     email: EMAIL_CONSULENTE,
+    consentimento: 'sim',
   }
   Object.entries({ ...padrao, ...campos }).forEach(([k, v]) => fd.set(k, v))
   return fd
@@ -748,5 +751,26 @@ describe('limite de pedidos por e-mail (protege contra disparo de e-mails)', () 
     mkEnvio()
 
     expect(await criarAgendamento(null, formAgendamento())).toBeUndefined()
+  })
+})
+
+describe('autorização de uso dos dados (LGPD)', () => {
+  it.each([[''], ['nao']])('criarAgendamento recusa sem a autorização marcada (valor %j)', async (valor) => {
+    const r = await criarAgendamento(null, formAgendamento({ consentimento: valor }))
+    expect(r).toEqual({ erro: MENSAGEM_CONSENTIMENTO, campo: 'consentimento' })
+    expect(mockDb.insert).not.toHaveBeenCalled()
+  })
+
+  it('criarAgendamento recusa quando o campo nem vem no formulário', async () => {
+    const fd = formAgendamento()
+    fd.delete('consentimento')
+    expect(await criarAgendamento(null, fd)).toEqual({ erro: MENSAGEM_CONSENTIMENTO, campo: 'consentimento' })
+  })
+
+  it('inscreverEmEvento recusa sem a autorização marcada', async () => {
+    const fd = formInscricao()
+    fd.delete('consentimento')
+    expect(await inscreverEmEvento(null, fd)).toEqual({ erro: MENSAGEM_CONSENTIMENTO, campo: 'consentimento' })
+    expect(getEvento).not.toHaveBeenCalled()
   })
 })

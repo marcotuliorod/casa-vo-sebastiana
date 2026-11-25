@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useActionState } from 'react'
 import { CampoIsca } from '@/components/shared/CampoIsca'
+import { ConsentimentoDados } from '@/components/booking/ConsentimentoDados'
 import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
 import { inscreverEmEvento, type EstadoFormAgendamento } from '@/lib/actions/booking'
 import { Button } from '@/components/ui/button'
@@ -156,12 +157,7 @@ export function EventoInscricaoForm({
           autoComplete="email"
           required
         />
-        <p className="text-xs text-gray-400">
-          Você receberá a confirmação por e-mail ·{' '}
-          <Link href="/privacidade" target="_blank" className="underline hover:text-gray-600">
-            Como usamos seus dados
-          </Link>
-        </p>
+        <p className="text-xs text-gray-500">Você receberá a confirmação por e-mail.</p>
         {estado?.campo === 'email' && (
           <p className="text-xs text-brand-error">{estado.erro}</p>
         )}
@@ -189,7 +185,12 @@ export function EventoInscricaoForm({
         </p>
       )}
 
-      {ocorrenciasDisponiveis.length > 0 && <BotaoSubmit />}
+      {ocorrenciasDisponiveis.length > 0 && (
+        <>
+          <ConsentimentoDados erro={estado?.campo === 'consentimento' ? estado.erro : undefined} />
+          <BotaoSubmit />
+        </>
+      )}
     </FormSemReset>
   )
 }

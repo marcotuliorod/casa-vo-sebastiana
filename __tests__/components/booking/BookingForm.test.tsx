@@ -65,17 +65,17 @@ describe('BookingForm', () => {
 
     it('exibe campo Telefone', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/telefone/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^telefone/i)).toBeInTheDocument()
     })
 
     it('exibe campo E-mail', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/e-mail/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^e-mail/i)).toBeInTheDocument()
     })
 
     it('exibe campo Observações (opcional)', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/observações/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^observações/i)).toBeInTheDocument()
     })
 
     it('exibe botão de confirmação', () => {
@@ -128,34 +128,34 @@ describe('BookingForm', () => {
 
     it('campo telefone é type="tel"', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/telefone/i)).toHaveAttribute('type', 'tel')
+      expect(screen.getByLabelText(/^telefone/i)).toHaveAttribute('type', 'tel')
     })
 
     it('campo telefone tem maxLength=15 (máscara formatada)', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/telefone/i)).toHaveAttribute('maxLength', '15')
+      expect(screen.getByLabelText(/^telefone/i)).toHaveAttribute('maxLength', '15')
     })
 
     it('campo email é type="email"', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/e-mail/i)).toHaveAttribute('type', 'email')
+      expect(screen.getByLabelText(/^e-mail/i)).toHaveAttribute('type', 'email')
     })
 
     it('campo observações tem maxLength=500', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/observações/i)).toHaveAttribute('maxLength', '500')
+      expect(screen.getByLabelText(/^observações/i)).toHaveAttribute('maxLength', '500')
     })
 
     it('nome, telefone e e-mail são obrigatórios (required)', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
       expect(screen.getByLabelText(/nome completo/i)).toBeRequired()
-      expect(screen.getByLabelText(/telefone/i)).toBeRequired()
-      expect(screen.getByLabelText(/e-mail/i)).toBeRequired()
+      expect(screen.getByLabelText(/^telefone/i)).toBeRequired()
+      expect(screen.getByLabelText(/^e-mail/i)).toBeRequired()
     })
 
     it('observações não são obrigatórias', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/observações/i)).not.toBeRequired()
+      expect(screen.getByLabelText(/^observações/i)).not.toBeRequired()
     })
   })
 
@@ -163,7 +163,7 @@ describe('BookingForm', () => {
   describe('Máscara de telefone (onInput)', () => {
     it('formata número de celular enquanto o usuário digita', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      const input = screen.getByLabelText(/telefone/i) as HTMLInputElement
+      const input = screen.getByLabelText(/^telefone/i) as HTMLInputElement
 
       // Simula digitar 11 dígitos
       fireEvent.input(input, { target: { value: '11999999999' } })
@@ -172,7 +172,7 @@ describe('BookingForm', () => {
 
     it('formata parcialmente com 5 dígitos digitados', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
-      const input = screen.getByLabelText(/telefone/i) as HTMLInputElement
+      const input = screen.getByLabelText(/^telefone/i) as HTMLInputElement
 
       fireEvent.input(input, { target: { value: '11999' } })
       expect(input.value).toBe('(11) 999')
@@ -215,13 +215,33 @@ describe('BookingForm', () => {
     it('exibe erro de campo telefone com borda vermelha', () => {
       mockEstado = { erro: 'Telefone inválido', campo: 'telefone' }
       render(<BookingForm {...DEFAULT_PROPS} />)
-      expect(screen.getByLabelText(/telefone/i)).toHaveClass('border-brand-error')
+      expect(screen.getByLabelText(/^telefone/i)).toHaveClass('border-brand-error')
     })
 
     it('sem estado de erro, não exibe mensagens de erro', () => {
       render(<BookingForm {...DEFAULT_PROPS} />)
       expect(screen.queryByText(/obrigatório/i)).not.toBeInTheDocument()
       expect(screen.queryByText(/inválido/i)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Autorização de uso dos dados (LGPD)', () => {
+    it('mostra a caixa obrigatória, desmarcada, com link para a política', () => {
+      render(<BookingForm data="2025-04-01" horaInicio="09:00" horaFim="10:00" />)
+      const caixa = screen.getByRole('checkbox', { name: /Autorizo a Casa de Vó Sebastiana/ })
+      expect(caixa).not.toBeChecked()
+      expect(caixa).toBeRequired()
+      expect(caixa).toHaveAttribute('name', 'consentimento')
+      expect(caixa).toHaveAttribute('value', 'sim')
+      expect(screen.getByRole('link', { name: 'Política de Privacidade' })).toHaveAttribute('href', '/privacidade')
+    })
+
+    it('mostra o erro do servidor junto da caixa', () => {
+      mockEstado = { erro: 'Para continuar, marque a autorização de uso dos seus dados.', campo: 'consentimento' }
+      render(<BookingForm data="2025-04-01" horaInicio="09:00" horaFim="10:00" />)
+      expect(screen.getByRole('alert')).toHaveTextContent('marque a autorização')
+      expect(screen.getByRole('checkbox', { name: /Autorizo/ })).toHaveAttribute('aria-invalid', 'true')
+      mockEstado = null
     })
   })
 })
