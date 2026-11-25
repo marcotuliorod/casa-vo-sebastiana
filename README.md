@@ -439,6 +439,20 @@ Não há tabela: o token se valida sozinho.
 - A busca junta todos os cadastros com aquele e-mail, sem diferenciar maiúsculas.
 - Esse link não vai para a `email_queue`: ele expira rápido e o consulente pode pedir outro.
 
+### Limite de tentativas
+
+As ações públicas têm limite por IP (`lib/rate-limit.ts`), contado em memória — o app roda num
+único container, e um restart só zera as contagens:
+
+| Ação | Limite |
+|------|--------|
+| Agendar | 10 por hora por IP |
+| Inscrever-se em evento | 10 por hora por IP |
+| Pedir link do histórico | 5 a cada 15 min por IP; 3 links por hora por e-mail (silencioso) |
+
+O IP vem do `X-Real-Ip` ou do último endereço do `X-Forwarded-For` (o que o Traefik/Caddy
+acrescentou). Quem passa do limite vê "Muitas tentativas em pouco tempo".
+
 ---
 
 ## Autenticação Admin

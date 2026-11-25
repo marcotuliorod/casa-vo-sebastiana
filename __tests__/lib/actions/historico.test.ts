@@ -14,6 +14,7 @@ import { getNomeClientePorEmail } from '@/lib/queries/appointments'
 import { enviarEmail } from '@/lib/email/cliente'
 import { verificarTokenHistorico } from '@/lib/historico/token'
 import { solicitarLinkHistorico, sairDoHistorico } from '@/lib/actions/historico'
+import { MENSAGEM_LIMITE, zerarLimites } from '@/lib/rate-limit'
 
 const mockNome = vi.mocked(getNomeClientePorEmail)
 const mockEnviar = vi.mocked(enviarEmail)
@@ -31,6 +32,7 @@ async function rodarPendentes() {
 describe('solicitarLinkHistorico', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    zerarLimites()
     pendentes.length = 0
     process.env.AUTH_SECRET = 'segredo-de-teste'
     process.env.NEXT_PUBLIC_BASE_URL = 'https://casa.exemplo'
@@ -83,6 +85,34 @@ describe('solicitarLinkHistorico', () => {
     await expect(rodarPendentes()).resolves.toBeUndefined()
     expect(erro).toHaveBeenCalled()
     erro.mockRestore()
+  })
+})
+
+describe('solicitarLinkHistorico — limite de tentativas', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    zerarLimites()
+    pendentes.length = 0
+    process.env.AUTH_SECRET = 'segredo-de-teste'
+    mockNome.mockResolvedValue('Maria')
+    mockEnviar.mockResolvedValue({ sucesso: true, idMensagem: 'msg-1' })
+  })
+
+  it('manda no máximo 3 links por hora para o mesmo e-mail, sem mudar a resposta', async () => {
+    for (let i = 0; i < 4; i++) {
+      expect(await solicitarLinkHistorico(null, form('maria@exemplo.com'))).toEqual({
+        enviadoPara: 'maria@exemplo.com',
+      })
+    }
+    await rodarPendentes()
+    expect(mockEnviar).toHaveBeenCalledTimes(3)
+  })
+
+  it('recusa a 6ª tentativa do mesmo IP em 15 minutos', async () => {
+    for (let i = 0; i < 5; i++) {
+      expect(await solicitarLinkHistorico(null, form(`pessoa${i}@exemplo.com`))).toHaveProperty('enviadoPara')
+    }
+    expect(await solicitarLinkHistorico(null, form('outra@exemplo.com'))).toEqual({ erro: MENSAGEM_LIMITE })
   })
 })
 

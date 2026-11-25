@@ -12,6 +12,7 @@ import { getNomeClientePorEmail } from '@/lib/queries/appointments'
 import { COOKIE_HISTORICO, gerarTokenHistorico } from '@/lib/historico/token'
 import { enviarEmail } from '@/lib/email/cliente'
 import { emailLinkHistorico } from '@/lib/email/templates'
+import { LIMITES, MENSAGEM_LIMITE, consumirLimite, ipDaRequisicao } from '@/lib/rate-limit'
 
 const schemaEmail = z.string().trim().min(1, 'Informe seu e-mail').email('E-mail inválido').toLowerCase()
 
@@ -40,7 +41,15 @@ export async function solicitarLinkHistorico(
   }
   const email = resultado.data
 
+  if (!consumirLimite(`historico-ip:${await ipDaRequisicao()}`, LIMITES.historicoPorIp)) {
+    return { erro: MENSAGEM_LIMITE }
+  }
+  // Por e-mail o limite é silencioso: a resposta continua igual (não revela se
+  // o e-mail existe), só não manda mais um link para a mesma caixa.
+  const enviarLink = consumirLimite(`historico-email:${email}`, LIMITES.historicoPorEmail)
+
   after(async () => {
+    if (!enviarLink) return
     try {
       const nome = await getNomeClientePorEmail(email)
       if (!nome) return

@@ -42,6 +42,7 @@ import { getSlotsDisponiveis } from '@/lib/queries/availability'
 import { getEvento, contarInscritosOcorrencia } from '@/lib/queries/eventos'
 import type { Evento } from '@/types/database'
 import { cancelarAgendamento, criarAgendamento, inscreverEmEvento } from '@/lib/actions/booking'
+import { MENSAGEM_LIMITE, zerarLimites } from '@/lib/rate-limit'
 
 type MockDb = {
   insert: ReturnType<typeof vi.fn>
@@ -164,6 +165,7 @@ function formInscricao(campos: Record<string, string> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  zerarLimites()
   delete process.env.ADMIN_EMAIL_NOTIFICACOES
   delete process.env.MAX_AGENDAMENTOS_MES
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -558,5 +560,28 @@ describe('avisos à Casa por e-mail', () => {
       expect(fila[1]).toEqual(itemFilaAdmin())
       expect(inseridos.has(logsEmail)).toBe(false)
     })
+  })
+})
+
+describe('limite de tentativas', () => {
+  it('criarAgendamento recusa a 11ª tentativa na mesma hora', async () => {
+    vi.mocked(getSlotsDisponiveis).mockResolvedValue({ slots: [] } as never)
+    for (let i = 0; i < 10; i++) {
+      const r = await criarAgendamento(null, formAgendamento())
+      expect(r?.erro).not.toBe(MENSAGEM_LIMITE)
+    }
+    expect(await criarAgendamento(null, formAgendamento())).toEqual({ erro: MENSAGEM_LIMITE })
+    // A tentativa barrada não chega ao banco nem à disponibilidade
+    expect(getSlotsDisponiveis).toHaveBeenCalledTimes(10)
+  })
+
+  it('inscreverEmEvento recusa a 11ª tentativa na mesma hora', async () => {
+    vi.mocked(getEvento).mockResolvedValue(null)
+    for (let i = 0; i < 10; i++) {
+      const r = await inscreverEmEvento(null, formInscricao())
+      expect(r?.erro).not.toBe(MENSAGEM_LIMITE)
+    }
+    expect(await inscreverEmEvento(null, formInscricao())).toEqual({ erro: MENSAGEM_LIMITE })
+    expect(getEvento).toHaveBeenCalledTimes(10)
   })
 })

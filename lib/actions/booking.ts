@@ -21,6 +21,7 @@ import { ehOcorrenciaValida } from '@/lib/utils/recorrencia'
 import { normalizarTelefone } from '@/lib/utils/phone'
 import { enviarEmailComFila } from '@/lib/email/envio'
 import { listaDeEmails } from '@/lib/email/cliente'
+import { LIMITES, MENSAGEM_LIMITE, consumirLimite, ipDaRequisicao } from '@/lib/rate-limit'
 
 // Schema de validação para criação de agendamento
 const schemaCriarAgendamento = z.object({
@@ -54,6 +55,11 @@ export async function criarAgendamento(
   const { data, hora_inicio, hora_fim, nome, telefone, email, notas } = resultado.data
   const telefoneNormalizado = normalizarTelefone(telefone)
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
+
+  // Freia quem tenta lotar a agenda em sequência
+  if (!consumirLimite(`agendar:${await ipDaRequisicao()}`, LIMITES.agendarPorIp)) {
+    return { erro: MENSAGEM_LIMITE }
+  }
 
   // 0a. US-19: verificar limite de agendamentos por cliente por mês
   const limiteStr = process.env.MAX_AGENDAMENTOS_MES
@@ -203,6 +209,10 @@ export async function inscreverEmEvento(
   const { evento_id, data, nome, telefone, email, notas } = resultado.data
   const telefoneNormalizado = normalizarTelefone(telefone)
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
+
+  if (!consumirLimite(`evento:${await ipDaRequisicao()}`, LIMITES.eventoPorIp)) {
+    return { erro: MENSAGEM_LIMITE }
+  }
 
   // 1. Verificar evento ativo
   const evento = await getEvento(evento_id)
