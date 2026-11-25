@@ -31,6 +31,7 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
   3. Preencher dados — nome, telefone, e-mail (obrigatório — é o canal de contato), observações
 - **Página do agendamento** acessível por link público via token (sem login)
 - **Auto-cancelamento** via link público
+- **Meus Agendamentos** (`/historico`) — o consulente informa o e-mail e recebe um link de acesso válido por 1 hora (ver "Histórico do consulente")
 
 ### Painel Admin (protegido por login)
 - Dashboard com estatísticas (hoje, semana, mês, total de consulentes)
@@ -278,7 +279,8 @@ Diferente do Supabase, este Postgres não usa Row Level Security. Toda autoriza�
 | `/agendar/eventos/[id]` | Server Component | Inscrição em um evento |
 | `/agendamento/[token]` | Server Component | Detalhe público (sem login) |
 | `/agendamento/[token]/cancelar` | Client Component | Confirmação de cancelamento |
-| `/historico` | Server Component | Busca de histórico do consulente por telefone |
+| `/historico` | Server Component | Histórico do consulente — pede o link por e-mail ou mostra os agendamentos se o acesso for válido |
+| `/historico/acesso` | Route Handler | Destino do link do e-mail: valida o token, grava o cookie e redireciona |
 | `/mediuns/[token]` | Server Component | Área do médium (assumir/liberar agendamentos, mural de recados) |
 | `/auth/login` | Client Component | Login admin (magic link via Auth.js) |
 | `/api/auth/[...nextauth]` | API Route | Rotas nativas do Auth.js (signin, callback, session, csrf…) |
@@ -309,7 +311,7 @@ casa-vo-sebastiana/
 │   ├── agendamento/[token]/
 │   │   ├── page.tsx                  # Detalhe público
 │   │   └── cancelar/page.tsx         # Cancelar agendamento
-│   ├── historico/                    # Busca de histórico do consulente por telefone
+│   ├── historico/                    # Meus Agendamentos (acesso por link enviado ao e-mail)
 │   ├── mediuns/[token]/              # Área do médium: assumir/liberar + mural de recados
 │   ├── auth/
 │   │   └── login/page.tsx            # Magic link (Auth.js)
@@ -422,6 +424,20 @@ As actions usam `enviarEmailComFila()` (`lib/email/envio.ts`), que nunca lança:
 O cron reenvia a fila de hora em hora (até 3 tentativas) e descarta itens com mais de 48h ou de
 agendamentos cancelados/passados (exceto o próprio e-mail de cancelamento). O aviso de
 cancelamento à Casa é enfileirado sem `agendamento_id` para não ser descartado.
+
+### Histórico do consulente
+
+`/historico` não abre só com um dado digitado: o consulente informa o e-mail e recebe um link
+(`lib/actions/historico.ts`). O link leva um token assinado com HMAC-SHA256 a partir do
+`AUTH_SECRET` (`lib/historico/token.ts`), que diz qual e-mail pode ser consultado e expira em 1 hora.
+Não há tabela: o token se valida sozinho.
+
+- A resposta da tela é a mesma exista ou não o e-mail, e o envio roda depois da resposta
+  (`after()`), para não revelar quem é consulente da Casa.
+- `/historico/acesso` valida o token, grava-o num cookie httpOnly (`path=/historico`) e
+  redireciona, tirando o token da barra de endereço. O botão "Sair" apaga o cookie.
+- A busca junta todos os cadastros com aquele e-mail, sem diferenciar maiúsculas.
+- Esse link não vai para a `email_queue`: ele expira rápido e o consulente pode pedir outro.
 
 ---
 

@@ -1,12 +1,16 @@
-// Histórico de agendamentos do consulente — acesso público por telefone
+// Histórico de agendamentos do consulente ("Meus Agendamentos").
+// Só abre com o link enviado ao e-mail do consulente: o token do link fica num
+// cookie httpOnly (app/historico/acesso/route.ts) e é validado aqui.
 import Link from 'next/link'
+import { cookies } from 'next/headers'
 import { Logo } from '@/components/shared/Logo'
 import { StatusBadge } from '@/components/admin/StatusBadge'
-import { HistoricoSearchForm } from './HistoricoSearchForm'
-import { getHistoricoCliente } from '@/lib/queries/appointments'
+import { HistoricoEmailForm } from './HistoricoEmailForm'
+import { getHistoricoPorEmail } from '@/lib/queries/appointments'
 import { getMediunsNomesMap } from '@/lib/queries/mediuns'
+import { sairDoHistorico } from '@/lib/actions/historico'
+import { COOKIE_HISTORICO, verificarTokenHistorico } from '@/lib/historico/token'
 import { formatarDataExtenso } from '@/lib/utils/date'
-import { normalizarTelefone, validarTelefone } from '@/lib/utils/phone'
 import { Calendar, Clock, Sparkles } from 'lucide-react'
 
 export const metadata = {
@@ -14,17 +18,15 @@ export const metadata = {
 }
 
 interface Props {
-  searchParams: Promise<{ tel?: string }>
+  searchParams: Promise<{ link?: string }>
 }
 
 export default async function HistoricoPage({ searchParams }: Props) {
-  const { tel } = await searchParams
+  const { link } = await searchParams
+  const jar = await cookies()
+  const acesso = verificarTokenHistorico(jar.get(COOKIE_HISTORICO)?.value)
 
-  const telefone = tel?.trim() ?? ''
-  const telefonValido = telefone && validarTelefone(telefone)
-  const agendamentos = telefonValido
-    ? await getHistoricoCliente(normalizarTelefone(telefone))
-    : null
+  const agendamentos = acesso ? await getHistoricoPorEmail(acesso.email) : null
 
   // US-23: batch fetch nomes de médiuns para os cards
   const mediumIds = agendamentos
@@ -41,19 +43,34 @@ export default async function HistoricoPage({ searchParams }: Props) {
             Meus Agendamentos
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Informe seu telefone para ver seu histórico
+            {acesso
+              ? <>Agendamentos de <span className="break-all">{acesso.email}</span></>
+              : 'Informe o e-mail usado no agendamento e enviaremos um link de acesso'}
           </p>
         </div>
 
-        {/* Formulário com máscara de telefone */}
-        <HistoricoSearchForm defaultValue={telefone} />
+        {!acesso && link === 'invalido' && (
+          <p className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert">
+            Este link expirou ou não é válido. Peça um novo abaixo.
+          </p>
+        )}
+
+        {acesso ? (
+          <form action={sairDoHistorico} className="mb-6 text-right">
+            <button type="submit" className="text-xs text-gray-500 hover:text-brand hover:underline">
+              Sair
+            </button>
+          </form>
+        ) : (
+          <HistoricoEmailForm />
+        )}
 
         {/* Resultados */}
         {agendamentos === null ? null : agendamentos.length === 0 ? (
           <div className="rounded-xl border-2 border-dashed border-gray-200 py-12 text-center">
             <p className="text-2xl mb-2">🔍</p>
             <p className="text-gray-500 text-sm">
-              Nenhum agendamento encontrado para este telefone.
+              Nenhum agendamento encontrado para este e-mail.
             </p>
           </div>
         ) : (
