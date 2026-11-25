@@ -63,6 +63,46 @@ describe('templates de e-mail', () => {
     expect(emailCancelamento(BASE).texto).not.toContain('Motivo')
   })
 
+  describe('informações da Casa nos e-mails', () => {
+    const casa = {
+      endereco: 'Rua das Flores, 10',
+      linkMapa: 'https://maps.app.goo.gl/abc',
+      emailContato: 'casa@exemplo.com',
+      telefoneContato: null,
+      orientacoes: 'Chegue 15 minutos antes.\nUse roupa clara.',
+      politicaCancelamento: 'Cancele pelo link.',
+      responsavelDados: null,
+    }
+
+    it('pedido recebido: endereço, mapa clicável, contato e orientações', () => {
+      const e = emailConfirmacao({ ...BASE, casa })
+      expect(e.texto).toContain('Endereço: Rua das Flores, 10')
+      expect(e.texto).toContain('Mapa: https://maps.app.goo.gl/abc')
+      expect(e.texto).toContain('Contato: casa@exemplo.com')
+      expect(e.texto).toContain('Chegue 15 minutos antes.\nUse roupa clara.')
+      expect(e.html).toContain('<a href="https://maps.app.goo.gl/abc"')
+      expect(e.html).toContain('Abrir no mapa')
+      expect(e.texto).not.toContain('Cancele pelo link.')
+    })
+
+    it('confirmado: inclui também a política de cancelamento', () => {
+      expect(emailAgendamentoConfirmado({ ...BASE, casa }).texto).toContain('Cancele pelo link.')
+    })
+
+    it('alteração e eventos: endereço sem as orientações do atendimento', () => {
+      const alt = emailAgendamentoAlterado({ ...BASE, dataAnterior: '2025-07-01', horaAnterior: '10:00', casa })
+      expect(alt.texto).toContain('Endereço: Rua das Flores, 10')
+      expect(alt.texto).not.toContain('Chegue 15 minutos')
+      const ev = emailLembreteEvento({ nomeCliente: 'Maria', tituloEvento: 'Gira', dataEvento: '2025-07-15', horaInicio: '19:00', tokenPublico: 't', baseUrl: 'https://x', casa })
+      expect(ev.texto).toContain('Endereço: Rua das Flores, 10')
+      expect(ev.texto).not.toContain('Chegue 15 minutos')
+    })
+
+    it('sem informações da Casa, nada muda', () => {
+      expect(emailConfirmacao(BASE).texto).not.toContain('Endereço')
+    })
+  })
+
   it('lembrete: menciona amanhã e o link para cancelar', () => {
     const e = emailLembrete24h(BASE)
     expect(e.assunto).toMatch(/amanhã/)

@@ -1,8 +1,15 @@
 import Link from 'next/link'
 import { Calendar, CalendarRange, Clock } from 'lucide-react'
 import { Logo } from '@/components/shared/Logo'
+import { InfoCasaBloco } from '@/components/shared/InfoCasaBloco'
+import { getInfoCasa } from '@/lib/queries/casa'
 
-export default function Home() {
+// Lê as informações da Casa a cada visita (editáveis no painel)
+export const dynamic = 'force-dynamic'
+
+export default async function Home() {
+  const infoCasa = await getInfoCasa()
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#A4D3EE]/20 via-white to-white flex flex-col">
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-12 max-w-lg mx-auto w-full space-y-8">
@@ -49,6 +56,8 @@ export default function Home() {
           <Clock className="h-4 w-4" />
           Ver meus agendamentos
         </Link>
+
+        <InfoCasaBloco info={infoCasa} />
 
       </main>
 

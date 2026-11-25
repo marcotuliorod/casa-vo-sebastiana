@@ -17,6 +17,10 @@ vi.mock('@/lib/db', () => ({
     query: { agendamentos: { findMany: vi.fn(async () => []) } },
   },
 }))
+vi.mock('@/lib/queries/casa', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/queries/casa')>()
+  return { ...real, getInfoCasa: vi.fn(async () => real.INFO_CASA_VAZIA) }
+})
 vi.mock('@/lib/queries/appointments', () => ({
   getAgendamentosParaLembrete: vi.fn(async () => []),
 }))

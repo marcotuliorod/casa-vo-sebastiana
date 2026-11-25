@@ -18,6 +18,10 @@ vi.mock('@/lib/db', () => {
   db.transaction = vi.fn((cb: (tx: unknown) => unknown) => cb(db))
   return { db }
 })
+vi.mock('@/lib/queries/casa', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/queries/casa')>()
+  return { ...real, getInfoCasa: vi.fn(async () => real.INFO_CASA_VAZIA) }
+})
 vi.mock('@/lib/auth/config', () => ({
   auth: vi.fn(),
 }))

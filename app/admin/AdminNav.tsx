@@ -11,6 +11,7 @@ import {
   Users,
   Sparkles,
   MessageSquare,
+  Home,
   LogOut,
 } from 'lucide-react'
 import { signOut } from 'next-auth/react'
@@ -24,6 +25,7 @@ const navItems = [
   { href: '/admin/consulentes', label: 'Consulentes', icone: Users, exact: false },
   { href: '/admin/mediuns', label: 'Médiuns', icone: Sparkles, exact: false },
   { href: '/admin/recados', label: 'Mural de Recados', icone: MessageSquare, exact: false },
+  { href: '/admin/casa', label: 'Informações da Casa', icone: Home, exact: false },
 ]
 
 export function AdminNav() {

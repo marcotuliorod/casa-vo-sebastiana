@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // ─── Mocks globais ─────────────────────────────────────────────────────────────
 
+vi.mock('@/lib/queries/casa', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/queries/casa')>()
+  return { ...real, getInfoCasa: vi.fn(async () => real.INFO_CASA_VAZIA) }
+})
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
 vi.mock('@/lib/db', () => ({
   db: {
