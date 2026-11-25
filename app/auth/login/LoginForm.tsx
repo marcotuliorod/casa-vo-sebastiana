@@ -82,7 +82,7 @@ export function LoginForm() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin@casavosebastiana.com.br"
+                    placeholder="admin@agenda.mtrm.tech"
                     required
                     autoFocus
                   />

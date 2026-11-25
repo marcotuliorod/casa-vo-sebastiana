@@ -9,7 +9,7 @@
  *
  * Uso:
  *   k6 run load-tests/load.js
- *   k6 run -e BASE_URL=https://casavosebastiana.com.br load-tests/load.js
+ *   k6 run -e BASE_URL=https://agenda.mtrm.tech load-tests/load.js
  */
 
 import http from 'k6/http'

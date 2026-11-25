@@ -6,7 +6,7 @@
  *
  * Uso:
  *   k6 run load-tests/smoke.js
- *   k6 run -e BASE_URL=https://casavosebastiana.com.br load-tests/smoke.js
+ *   k6 run -e BASE_URL=https://agenda.mtrm.tech load-tests/smoke.js
  */
 
 import http from 'k6/http'
