@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 const filaMock = vi.fn()
 const updateSet = vi.fn()
 const insertValues = vi.fn()
+const apagados = vi.fn(async () => [] as unknown[])
 
 vi.mock('@/lib/db', () => ({
   db: {
@@ -14,6 +15,7 @@ vi.mock('@/lib/db', () => ({
     })),
     update: vi.fn(() => ({ set: (v: unknown) => { updateSet(v); return { where: vi.fn() } } })),
     insert: vi.fn(() => ({ values: (v: unknown) => insertValues(v) })),
+    delete: vi.fn(() => ({ where: () => ({ returning: () => apagados() }) })),
     query: { agendamentos: { findMany: vi.fn(async () => []) } },
   },
 }))
@@ -241,6 +243,26 @@ describe('GET /api/cron/lembretes', () => {
       expect(res.status).toBe(401)
     }
   )
+
+  it('apaga registros de e-mail com mais de 90 dias (logs e fila já resolvida)', async () => {
+    filaMock.mockResolvedValue([])
+    apagados.mockResolvedValueOnce([{ id: 'l1' }, { id: 'l2' }]).mockResolvedValueOnce([{ id: 'q1' }])
+
+    const res = await (await GET(req())).json()
+
+    expect(db.delete).toHaveBeenCalledTimes(2)
+    expect(res.retencao.registros_apagados).toBe(3)
+  })
+
+  it('falha na limpeza não derruba o cron', async () => {
+    filaMock.mockResolvedValue([])
+    apagados.mockRejectedValueOnce(new Error('timeout'))
+
+    const res = await GET(req())
+
+    expect(res.status).toBe(200)
+    expect((await res.json()).retencao.registros_apagados).toBe(0)
+  })
 
   describe('lembrete de evento (hora do evento no horário de Brasília)', () => {
     // Evento às 19:00 de Brasília (22:00 UTC) com lembrete 3 h antes: 16:00 BRT (19:00 UTC)

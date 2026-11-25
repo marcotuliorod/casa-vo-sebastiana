@@ -1070,8 +1070,9 @@ describe('excluirCliente', () => {
     mockDb.delete.mockReturnValue(mkDeleteChain())
     const resultado = await excluirCliente('cli-1')
     expect(resultado).toEqual({})
-    // agendamentos.cliente_id é RESTRICT: o histórico precisa sair antes do cliente
-    expect(mockDb.delete.mock.calls.map(([t]) => t)).toEqual([agendamentos, clientes])
+    // A fila de e-mail (com o texto das mensagens) sai primeiro; agendamentos.cliente_id
+    // é RESTRICT, então o histórico precisa sair antes do cliente
+    expect(mockDb.delete.mock.calls.map(([t]) => t)).toEqual([emailQueue, agendamentos, clientes])
   })
 
   it('retorna erro de DB na exclusão', async () => {

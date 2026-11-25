@@ -7,6 +7,10 @@ import { FUSO_HORARIO_BR } from '@/lib/utils/date'
 // Itens mais antigos que isso não são mais reenviados (mensagem perdeu o sentido)
 export const VALIDADE_FILA_HORAS = 48
 
+// Registros de e-mail (logs_email e email_queue) guardam destinatários e textos com
+// dados pessoais; o cron apaga os que passaram deste prazo (prometido em /privacidade).
+export const RETENCAO_REGISTROS_EMAIL_DIAS = 90
+
 // Hora (Brasília) a partir da qual os lembretes de horário do dia seguinte saem.
 // O cron roda de hora em hora; a flag lembrete_enviado garante um envio só.
 export const HORA_LEMBRETES_HORARIO = 9

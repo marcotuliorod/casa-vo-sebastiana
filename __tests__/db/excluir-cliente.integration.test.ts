@@ -43,7 +43,7 @@ describe.skipIf(!DATABASE_URL)('excluirCliente — integração com Postgres rea
     await client.end()
   })
 
-  it('apaga consulente com histórico, incluindo os logs de e-mail', async () => {
+  it('apaga consulente com histórico, incluindo logs e fila de e-mail', async () => {
     const [cli] = await db
       .insert(schema.clientes)
       .values({ nome: 'Para excluir', telefone: `${marcador}1`, email: 'excluir@exemplo.com' })
@@ -59,8 +59,22 @@ describe.skipIf(!DATABASE_URL)('excluirCliente — integração com Postgres rea
       assunto: 'x',
       status: 'enviado',
     })
+    // Item da fila com o texto da mensagem (nome, telefone, e-mail): precisa sair junto
+    await db.insert(schema.emailQueue).values({
+      agendamentoId: ag.id,
+      destinatarios: 'excluir@exemplo.com',
+      assunto: 'x',
+      texto: 'Para excluir, telefone…',
+      html: '<p>x</p>',
+      tipo: 'confirmacao',
+      status: 'falhou',
+    })
 
     expect(await excluirCliente(cli.id)).toEqual({})
+
+    expect(
+      await db.select().from(schema.emailQueue).where(eq(schema.emailQueue.destinatarios, 'excluir@exemplo.com'))
+    ).toEqual([])
 
     expect(await db.select().from(schema.clientes).where(eq(schema.clientes.id, cli.id))).toEqual([])
     expect(await db.select().from(schema.agendamentos).where(eq(schema.agendamentos.clienteId, cli.id))).toEqual([])

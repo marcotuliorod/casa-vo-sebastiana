@@ -1,3 +1,4 @@
+import { RodapePublico } from '@/components/shared/RodapePublico'
 import { Logo } from '@/components/shared/Logo'
 
 export default function AgendarLayout({ children }: { children: React.ReactNode }) {
@@ -14,9 +15,7 @@ export default function AgendarLayout({ children }: { children: React.ReactNode 
       </main>
 
       {/* Footer */}
-      <footer className="py-6 text-center text-xs text-gray-400">
-        <p>🌿 Com amor e fé — Casa de Vó Sebastiana</p>
-      </footer>
+      <RodapePublico />
     </div>
   )
 }

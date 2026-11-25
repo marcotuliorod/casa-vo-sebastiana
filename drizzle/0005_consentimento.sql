@@ -1,0 +1,1 @@
+ALTER TABLE "clientes" ADD COLUMN "consentimento_em" timestamp with time zone;

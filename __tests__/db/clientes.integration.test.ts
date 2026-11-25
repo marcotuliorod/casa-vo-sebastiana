@@ -71,4 +71,22 @@ describe.skipIf(!DATABASE_URL)('salvarCliente — integração com Postgres real
     expect(cli.email).toBe('novo@exemplo.com')
     expect(cli.nome).toBe('Cadastro Novo')
   })
+
+  it('grava quando a pessoa autorizou o uso dos dados (consentimento)', async () => {
+    const telefone = `${marcador}5`
+    const antes = Date.now()
+    const [cli] = await salvarCliente(db, { nome: 'Maria', telefone, email: 'maria5@exemplo.com' })
+
+    expect(cli.consentimentoEm).toBeInstanceOf(Date)
+    expect(cli.consentimentoEm!.getTime()).toBeGreaterThanOrEqual(antes - 5_000)
+  })
+
+  it('pedido com o telefone de outra pessoa não mexe no consentimento dela', async () => {
+    const telefone = `${marcador}6`
+    await db.insert(schema.clientes).values({ nome: 'Dona', telefone, email: 'dona@exemplo.com', consentimentoEm: new Date('2026-01-01T00:00:00Z') })
+
+    const [cli] = await salvarCliente(db, { nome: 'Outra', telefone, email: 'outra6@exemplo.com' })
+
+    expect(cli.consentimentoEm?.toISOString()).toBe('2026-01-01T00:00:00.000Z')
+  })
 })

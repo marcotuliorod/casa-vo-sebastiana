@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { RodapePublico } from '@/components/shared/RodapePublico'
 import { Calendar, CalendarRange, Clock } from 'lucide-react'
 import { Logo } from '@/components/shared/Logo'
 import { InfoCasaBloco } from '@/components/shared/InfoCasaBloco'
@@ -61,12 +62,7 @@ export default async function Home() {
 
       </main>
 
-      <footer className="py-6 text-center text-xs text-gray-400">
-        Casa de Vó Sebastiana · Umbanda ·{' '}
-        <Link href="/privacidade" className="hover:text-gray-600 hover:underline">
-          Privacidade
-        </Link>
-      </footer>
+      <RodapePublico />
     </div>
   )
 }

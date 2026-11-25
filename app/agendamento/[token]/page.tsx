@@ -1,6 +1,7 @@
 // Página de detalhe do agendamento — acessível pelo token público, sem login
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { RodapePublico } from '@/components/shared/RodapePublico'
 import { Logo } from '@/components/shared/Logo'
 import { StatusBadge } from '@/components/admin/StatusBadge'
 import { Button } from '@/components/ui/button'
@@ -164,9 +165,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
           </Link>
         </div>
 
-        <p className="mt-6 text-center text-xs text-gray-400">
-          🌿 Casa de Vó Sebastiana — Umbanda & Atendimento Espiritual
-        </p>
+        <RodapePublico className="mt-2" />
       </div>
     </div>
   )

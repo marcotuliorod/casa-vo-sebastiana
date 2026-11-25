@@ -26,6 +26,7 @@ import { listaDeEmails } from '@/lib/email/cliente'
 import { LIMITES, MENSAGEM_LIMITE, MENSAGEM_LIMITE_EMAIL, consumirLimite, ipDaRequisicao } from '@/lib/rate-limit'
 import { MENSAGEM_ISCA, campoIscaPreenchido } from '@/lib/isca'
 import { getInfoCasa } from '@/lib/queries/casa'
+import { MENSAGEM_CONSENTIMENTO } from '@/lib/consentimento'
 
 // Campos do consulente, comuns ao agendamento e à inscrição em evento
 const campoNome = z
@@ -47,6 +48,9 @@ const campoEmail = z
   .email('E-mail inválido')
   .toLowerCase()
 
+// Autorização de uso dos dados (LGPD): obrigatória, conferida aqui e não só no navegador
+const campoConsentimento = z.literal('sim', { message: MENSAGEM_CONSENTIMENTO })
+
 // Schema de validação para criação de agendamento
 const schemaCriarAgendamento = z.object({
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
@@ -56,6 +60,7 @@ const schemaCriarAgendamento = z.object({
   telefone: campoTelefone,
   email: campoEmail,
   notas: z.string().max(500).optional(),
+  consentimento: campoConsentimento,
 })
 
 // Recusa datas e horários que a página de agendamento não oferece:
@@ -228,6 +233,7 @@ const schemaInscreverEvento = z.object({
   telefone: campoTelefone,
   email: campoEmail,
   notas: z.string().max(500).optional(),
+  consentimento: campoConsentimento,
 })
 
 type ResultadoInscricao =
