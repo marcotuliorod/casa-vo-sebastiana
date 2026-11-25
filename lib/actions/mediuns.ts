@@ -3,7 +3,7 @@
 // Server Actions para a área pública dos médiuns (acesso via token)
 
 import { revalidatePath } from 'next/cache'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { agendamentos, mediuns } from '@/lib/db/schema'
 import { mensagemErro } from '@/lib/db/errors'
@@ -39,9 +39,24 @@ export async function assumirAgendamento(
     return { erro: 'Este agendamento já foi assumido por outro médium.' }
   }
 
-  // Atribui o médium
+  // Atribui o médium só se o atendimento ainda estiver livre e ativo, na mesma
+  // operação: se dois médiuns clicarem juntos, só o primeiro fica com ele.
   try {
-    await db.update(agendamentos).set({ mediumId: medium.id }).where(eq(agendamentos.id, agendamentoId))
+    const atualizados = await db
+      .update(agendamentos)
+      .set({ mediumId: medium.id })
+      .where(
+        and(
+          eq(agendamentos.id, agendamentoId),
+          isNull(agendamentos.mediumId),
+          inArray(agendamentos.status, ['pendente', 'confirmado'])
+        )
+      )
+      .returning({ id: agendamentos.id })
+
+    if (atualizados.length === 0) {
+      return { erro: 'Este agendamento já foi assumido por outro médium.' }
+    }
   } catch (erro) {
     return { erro: mensagemErro(erro) }
   }

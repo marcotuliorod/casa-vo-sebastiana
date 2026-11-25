@@ -2,9 +2,29 @@
 
 import { format, parseISO, addDays, isBefore, startOfDay } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { toZonedTime, fromZonedTime } from 'date-fns-tz'
+import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz'
 
 export const FUSO_HORARIO_BR = 'America/Sao_Paulo'
+
+// Quantos dias à frente o calendário público oferece para agendar
+export const DIAS_ANTECEDENCIA_AGENDAMENTO = 60
+
+// Data de hoje no fuso BR, 'YYYY-MM-DD'
+export function hojeBr(): string {
+  return formatInTimeZone(new Date(), FUSO_HORARIO_BR, 'yyyy-MM-dd')
+}
+
+// Hora atual no fuso BR, 'HH:mm'
+export function horaAgoraBr(): string {
+  return formatInTimeZone(new Date(), FUSO_HORARIO_BR, 'HH:mm')
+}
+
+// Última data aberta para agendamento ('YYYY-MM-DD'), no fuso BR
+export function dataLimiteAgendamento(): string {
+  const limite = new Date(`${hojeBr()}T12:00:00Z`)
+  limite.setUTCDate(limite.getUTCDate() + DIAS_ANTECEDENCIA_AGENDAMENTO)
+  return limite.toISOString().slice(0, 10)
+}
 
 // Retorna a data atual no horário de Brasília
 export function agora(): Date {

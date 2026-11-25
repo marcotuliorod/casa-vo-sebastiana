@@ -127,9 +127,11 @@ export async function getOcorrenciasEvento(evento: Evento): Promise<OcorrenciaEv
  */
 export async function contarInscritosOcorrencia(
   eventoId: string,
-  data: string
+  data: string,
+  // Permite contar dentro de uma transação (inscrição com trava de vagas)
+  executor: Pick<typeof db, 'select'> = db
 ): Promise<number> {
-  const linhas = await db
+  const linhas = await executor
     .select({ id: agendamentos.id })
     .from(agendamentos)
     .where(
