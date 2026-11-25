@@ -1,6 +1,8 @@
-// CSP em modo Report-Only: o navegador só reporta violações no console, sem
-// bloquear nada. 'unsafe-inline' em script-src é necessário no Next 14 sem nonce.
-// Depois de alguns dias sem violações, trocar a chave para Content-Security-Policy.
+// Content Security Policy (aplicada, não só reportada). Validada com o build de
+// produção percorrendo as páginas públicas e todo o painel admin: nenhuma violação.
+// 'unsafe-inline' em script-src é necessário porque o Next injeta scripts inline
+// sem nonce. Ao adicionar recurso externo (fonte, script, imagem de outro domínio),
+// liberar o domínio aqui ou ele será bloqueado.
 const csp = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
@@ -31,7 +33,7 @@ const nextConfig = {
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
           // Só em produção: o dev server do Next usa eval e quebraria a política
           ...(process.env.NODE_ENV === 'production'
-            ? [{ key: 'Content-Security-Policy-Report-Only', value: csp }]
+            ? [{ key: 'Content-Security-Policy', value: csp }]
             : []),
         ],
       },
