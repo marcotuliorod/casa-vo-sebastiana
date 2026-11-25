@@ -252,18 +252,28 @@ function LinhaEvento({ evento }: { evento: EventoComOcorrencias }) {
 
   // Estado do form de edição
   const editarComId = editarEvento.bind(null, evento.id)
-  const [estadoEditar, actionEditar] = useActionState(editarComId as (estado: EstadoFormEvento, formData: FormData) => Promise<EstadoFormEvento>, null)
-
   const [salvo, setSalvo] = useState(false)
 
+  // Fecha o formulário, mostra "salvo" e atualiza a lista na própria ação
+  const [estadoEditar, actionEditar] = useActionState(
+    async (estado: EstadoFormEvento, formData: FormData): Promise<EstadoFormEvento> => {
+      const resultado = await (editarComId as (e: EstadoFormEvento, f: FormData) => Promise<EstadoFormEvento>)(estado, formData)
+      if (resultado?.ok) {
+        setEditando(false)
+        setSalvo(true)
+        router.refresh()
+      }
+      return resultado
+    },
+    null
+  )
+
+  // O aviso "salvo" some sozinho depois de 4 segundos
   useEffect(() => {
-    if (!estadoEditar?.ok) return
-    setEditando(false)
-    setSalvo(true)
-    router.refresh()
+    if (!salvo) return
     const timer = setTimeout(() => setSalvo(false), 4000)
     return () => clearTimeout(timer)
-  }, [estadoEditar, router])
+  }, [salvo])
 
   const handleToggle = () => {
     startTransition(async () => {
@@ -458,15 +468,16 @@ export function EventosManager({ eventos }: { eventos: EventoComOcorrencias[] })
   const [mostrarFormCriacao, setMostrarFormCriacao] = useState(false)
 
   const [estadoCriar, actionCriar] = useActionState(
-    criarEvento as (estado: EstadoFormEvento, formData: FormData) => Promise<EstadoFormEvento>,
+    async (estado: EstadoFormEvento, formData: FormData): Promise<EstadoFormEvento> => {
+      const resultado = await (criarEvento as (e: EstadoFormEvento, f: FormData) => Promise<EstadoFormEvento>)(estado, formData)
+      if (resultado?.ok) {
+        setMostrarFormCriacao(false)
+        router.refresh()
+      }
+      return resultado
+    },
     null
   )
-
-  useEffect(() => {
-    if (!estadoCriar?.ok) return
-    setMostrarFormCriacao(false)
-    router.refresh()
-  }, [estadoCriar, router])
 
   return (
     <div className="space-y-4">

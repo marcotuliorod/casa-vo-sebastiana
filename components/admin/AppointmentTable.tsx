@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useState, useTransition, useEffect } from 'react'
+import { useActionState, useState, useTransition } from 'react'
 import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
 import { useRouter } from 'next/navigation'
 import { StatusBadge } from './StatusBadge'
@@ -121,17 +121,18 @@ function CardAgendamento({
   const [erroExcluir, setErroExcluir] = useState<string | null>(null)
 
   const editarComId = editarAgendamento.bind(null, ag.id)
+  // Fecha o formulário e atualiza a lista na própria ação, quando salvar dá certo
   const [estadoEditar, actionEditar] = useActionState(
-    editarComId as (estado: EstadoFormAgendamento, formData: FormData) => Promise<EstadoFormAgendamento>,
+    async (estado: EstadoFormAgendamento, formData: FormData): Promise<EstadoFormAgendamento> => {
+      const resultado = await editarComId(estado, formData)
+      if (resultado?.ok) {
+        setEditando(false)
+        router.refresh()
+      }
+      return resultado
+    },
     null
   )
-
-  useEffect(() => {
-    if (estadoEditar?.ok && editando) {
-      setEditando(false)
-      router.refresh()
-    }
-  }, [estadoEditar])
 
   const handleExcluir = async () => {
     const resultado = await excluirAgendamento(ag.id)

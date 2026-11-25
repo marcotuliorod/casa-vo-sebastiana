@@ -1,7 +1,7 @@
 'use client'
 
 import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
-import { useActionState, useTransition, useEffect, useState } from 'react'
+import { useActionState, useTransition, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   editarCliente,
@@ -39,17 +39,18 @@ function LinhaConsulente({ cliente }: { cliente: ClienteComContagem }) {
   const [erroExcluir, setErroExcluir] = useState<string | null>(null)
 
   const editarComId = editarCliente.bind(null, cliente.id)
+  // Fecha o formulário e atualiza a lista na própria ação, quando salvar dá certo
   const [estadoEditar, actionEditar] = useActionState(
-    editarComId as (estado: EstadoFormCliente, formData: FormData) => Promise<EstadoFormCliente>,
+    async (estado: EstadoFormCliente, formData: FormData): Promise<EstadoFormCliente> => {
+      const resultado = await editarComId(estado, formData)
+      if (resultado?.ok) {
+        setEditando(false)
+        router.refresh()
+      }
+      return resultado
+    },
     null
   )
-
-  useEffect(() => {
-    if (estadoEditar?.ok && editando) {
-      setEditando(false)
-      router.refresh()
-    }
-  }, [estadoEditar])
 
   const handleExcluir = async () => {
     const resultado = await excluirCliente(cliente.id)
