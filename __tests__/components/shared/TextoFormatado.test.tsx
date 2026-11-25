@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
 import { TextoFormatado } from '@/components/shared/TextoFormatado'
 
-const DESCRICAO_REAL = `🌿 **GIRA DE UMBANDA — CABOCLO** 🌿
+const DESCRICAO_EXEMPLO = `🌿 **GIRA DE UMBANDA — CABOCLO** 🌿
 
 Neste próximo domingo, a **Casa de Vó Sebastiana** abre suas portas.
 
 📍 **Casa de Vó Sebastiana**
-Rua Japurá, 490 — Bairro Renascença
+Rua das Flores, 490 — Bairro Centro
 
 🕯️ **Horário de chegada:** das **18h40 às 19h00**
 
@@ -15,7 +15,7 @@ Rua Japurá, 490 — Bairro Renascença
 
 describe('TextoFormatado', () => {
   it('renderiza **negrito** como <strong> e não deixa asteriscos literais', () => {
-    const { container } = render(<TextoFormatado texto={DESCRICAO_REAL} />)
+    const { container } = render(<TextoFormatado texto={DESCRICAO_EXEMPLO} />)
 
     const negritos = Array.from(container.querySelectorAll('strong')).map((n) => n.textContent)
     expect(negritos).toContain('GIRA DE UMBANDA — CABOCLO')
@@ -24,10 +24,10 @@ describe('TextoFormatado', () => {
   })
 
   it('preserva as quebras de linha do texto original', () => {
-    const { container } = render(<TextoFormatado texto={DESCRICAO_REAL} />)
+    const { container } = render(<TextoFormatado texto={DESCRICAO_EXEMPLO} />)
 
     expect(container.firstElementChild?.className).toContain('whitespace-pre-line')
-    expect(container.textContent).toContain('Casa de Vó Sebastiana\nRua Japurá, 490')
+    expect(container.textContent).toContain('Casa de Vó Sebastiana\nRua das Flores, 490')
     expect(container.textContent).toContain('\n\n')
   })
 

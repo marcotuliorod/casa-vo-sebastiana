@@ -4,10 +4,11 @@
 
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
-import { and, count, eq, gte, lt, ne } from 'drizzle-orm'
+import { and, count, eq, gte, lt, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { agendamentos, clientes } from '@/lib/db/schema'
 import { codigoPg } from '@/lib/db/errors'
+import { salvarCliente } from '@/lib/db/clientes'
 import { getSlotsDisponiveis } from '@/lib/queries/availability'
 import {
   emailConfirmacao,
@@ -18,22 +19,53 @@ import {
 } from '@/lib/email/templates'
 import { getEvento, contarInscritosOcorrencia } from '@/lib/queries/eventos'
 import { ehOcorrenciaValida } from '@/lib/utils/recorrencia'
-import { normalizarTelefone } from '@/lib/utils/phone'
+import { normalizarTelefone, validarTelefone } from '@/lib/utils/phone'
+import { dataLimiteAgendamento, ehDataPassada, hojeBr, horaAgoraBr } from '@/lib/utils/date'
 import { enviarEmailComFila } from '@/lib/email/envio'
 import { listaDeEmails } from '@/lib/email/cliente'
 import { LIMITES, MENSAGEM_LIMITE, consumirLimite, ipDaRequisicao } from '@/lib/rate-limit'
+
+// Campos do consulente, comuns ao agendamento e à inscrição em evento
+const campoNome = z
+  .string()
+  .trim()
+  .min(3, 'Nome deve ter pelo menos 3 caracteres')
+  .max(120, 'Nome muito longo')
+const campoTelefone = z
+  .string()
+  .min(10, 'Telefone inválido')
+  .max(20, 'Telefone inválido')
+  .refine(validarTelefone, 'Telefone inválido')
+// E-mail é o único canal de comunicação com o consulente
+const campoEmail = z
+  .string()
+  .trim()
+  .min(1, 'Informe seu e-mail')
+  .max(254, 'E-mail inválido')
+  .email('E-mail inválido')
+  .toLowerCase()
 
 // Schema de validação para criação de agendamento
 const schemaCriarAgendamento = z.object({
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
   hora_inicio: z.string().regex(/^\d{2}:\d{2}$/, 'Hora inválida'),
   hora_fim: z.string().regex(/^\d{2}:\d{2}$/, 'Hora inválida'),
-  nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
-  telefone: z.string().min(10, 'Telefone inválido'),
-  // E-mail é o único canal de comunicação com o consulente
-  email: z.string().trim().min(1, 'Informe seu e-mail').email('E-mail inválido').toLowerCase(),
+  nome: campoNome,
+  telefone: campoTelefone,
+  email: campoEmail,
   notas: z.string().max(500).optional(),
 })
+
+// Recusa datas e horários que a página de agendamento não oferece:
+// passado, além do horizonte do calendário ou horário de hoje que já passou.
+function erroDeData(data: string, horaInicio?: string): string | null {
+  if (ehDataPassada(data)) return 'Esta data já passou. Por favor, escolha outra.'
+  if (data > dataLimiteAgendamento()) return 'Esta data ainda não está aberta para agendamento.'
+  if (horaInicio && data === hojeBr() && horaInicio <= horaAgoraBr()) {
+    return 'Este horário já passou. Por favor, escolha outro.'
+  }
+  return null
+}
 
 export type EstadoFormAgendamento = {
   erro?: string
@@ -55,6 +87,9 @@ export async function criarAgendamento(
   const { data, hora_inicio, hora_fim, nome, telefone, email, notas } = resultado.data
   const telefoneNormalizado = normalizarTelefone(telefone)
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
+
+  const erroData = erroDeData(data, hora_inicio)
+  if (erroData) return { erro: erroData }
 
   // Freia quem tenta lotar a agenda em sequência
   if (!consumirLimite(`agendar:${await ipDaRequisicao()}`, LIMITES.agendarPorIp)) {
@@ -109,17 +144,10 @@ export async function criarAgendamento(
     return { erro: 'Este horário não está mais disponível. Por favor, escolha outro.' }
   }
 
-  // 1. Upsert do cliente (por telefone)
+  // 1. Cadastro do cliente (por telefone)
   let cliente
   try {
-    ;[cliente] = await db
-      .insert(clientes)
-      .values({ nome, telefone: telefoneNormalizado, email })
-      .onConflictDoUpdate({
-        target: clientes.telefone,
-        set: { nome, email },
-      })
-      .returning()
+    ;[cliente] = await salvarCliente(db, { nome, telefone: telefoneNormalizado, email })
   } catch {
     return { erro: 'Erro ao salvar seus dados. Tente novamente.' }
   }
@@ -187,12 +215,15 @@ export async function criarAgendamento(
 const schemaInscreverEvento = z.object({
   evento_id: z.string().uuid('Evento inválido'),
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
-  nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
-  telefone: z.string().min(10, 'Telefone inválido'),
-  // E-mail é o único canal de comunicação com o consulente
-  email: z.string().trim().min(1, 'Informe seu e-mail').email('E-mail inválido').toLowerCase(),
+  nome: campoNome,
+  telefone: campoTelefone,
+  email: campoEmail,
   notas: z.string().max(500).optional(),
 })
+
+type ResultadoInscricao =
+  | { erro: string }
+  | { agendamento: typeof agendamentos.$inferSelect }
 
 export async function inscreverEmEvento(
   _estado: EstadoFormAgendamento,
@@ -231,42 +262,40 @@ export async function inscreverEmEvento(
     return { erro: 'Data inválida para este evento.' }
   }
 
-  // 3. Verificar capacidade (verificação pessimista antes do insert)
-  const inscritos = await contarInscritosOcorrencia(evento_id, data)
-  if (inscritos >= evento.capacidade) {
-    return { erro: 'Não há mais vagas disponíveis para esta data.' }
-  }
-
-  // 4. Upsert do cliente (por telefone)
-  let cliente
-  try {
-    ;[cliente] = await db
-      .insert(clientes)
-      .values({ nome, telefone: telefoneNormalizado, email })
-      .onConflictDoUpdate({
-        target: clientes.telefone,
-        set: { nome, email },
-      })
-      .returning()
-  } catch {
-    return { erro: 'Erro ao salvar seus dados. Tente novamente.' }
-  }
-
-  // 5. Criar agendamento vinculado ao evento
+  // 3–5. Conferir vagas, salvar o cliente e inscrever numa transação só.
+  // A trava (por evento e data) faz inscrições simultâneas esperarem a vez,
+  // para que duas pessoas não ocupem a última vaga ao mesmo tempo.
   let agendamento
   try {
-    ;[agendamento] = await db
-      .insert(agendamentos)
-      .values({
-        clienteId: cliente.id,
-        eventoId: evento_id,
-        dataAgendada: data,
-        horaInicio: evento.hora_inicio,
-        horaFim: evento.hora_fim,
-        status: 'pendente',
-        notas: notas || null,
-      })
-      .returning()
+    const resultadoInscricao: ResultadoInscricao = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`inscricao:${evento_id}:${data}`}))`
+      )
+
+      const inscritos = await contarInscritosOcorrencia(evento_id, data, tx)
+      if (inscritos >= evento.capacidade) {
+        return { erro: 'Não há mais vagas disponíveis para esta data.' }
+      }
+
+      const [cliente] = await salvarCliente(tx, { nome, telefone: telefoneNormalizado, email })
+
+      const [novo] = await tx
+        .insert(agendamentos)
+        .values({
+          clienteId: cliente.id,
+          eventoId: evento_id,
+          dataAgendada: data,
+          horaInicio: evento.hora_inicio,
+          horaFim: evento.hora_fim,
+          status: 'pendente',
+          notas: notas || null,
+        })
+        .returning()
+      return { agendamento: novo }
+    })
+
+    if ('erro' in resultadoInscricao) return { erro: resultadoInscricao.erro }
+    agendamento = resultadoInscricao.agendamento
   } catch {
     return { erro: 'Erro ao registrar inscrição. Tente novamente.' }
   }

@@ -12,12 +12,22 @@ interface Props {
   params: Promise<{ token: string }>
 }
 
+// Primeiro nome, para os atendimentos ainda sem médium
+function primeiroNome(nome: string): string {
+  return nome.trim().split(/\s+/)[0] ?? ''
+}
+
+// `completo`: só o médium que assumiu o atendimento vê nome completo, telefone
+// e observações (como diz a política de privacidade). Nos disponíveis para
+// assumir aparecem só data, horário e primeiro nome.
 function CardAgendamento({
   ag,
   acao,
+  completo,
 }: {
   ag: AgendamentoComCliente
   acao: React.ReactNode
+  completo: boolean
 }) {
   return (
     <div className="bg-white rounded-xl border p-4 flex items-start justify-between gap-4">
@@ -28,19 +38,23 @@ function CardAgendamento({
         <p className="text-sm text-purple-700 font-medium">
           {ag.hora_inicio.slice(0, 5)} — {ag.hora_fim.slice(0, 5)}
         </p>
-        <p className="text-sm text-gray-600">{ag.clientes.nome}</p>
-        <div className="flex items-center gap-2">
-          <p className="text-sm text-gray-500">{formatarTelefone(ag.clientes.telefone)}</p>
-          <a
-            href={`https://wa.me/${ag.clientes.telefone.replace(/\D/g, '')}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-green-600 hover:underline"
-          >
-            WhatsApp ↗
-          </a>
-        </div>
-        {ag.notas && (
+        <p className="text-sm text-gray-600">
+          {completo ? ag.clientes.nome : primeiroNome(ag.clientes.nome)}
+        </p>
+        {completo && (
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-gray-500">{formatarTelefone(ag.clientes.telefone)}</p>
+            <a
+              href={`https://wa.me/${ag.clientes.telefone.replace(/\D/g, '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-green-600 hover:underline"
+            >
+              WhatsApp ↗
+            </a>
+          </div>
+        )}
+        {completo && ag.notas && (
           <p className="text-xs text-gray-400 italic">{ag.notas}</p>
         )}
       </div>
@@ -103,6 +117,7 @@ export default async function MediumPage({ params }: Props) {
                 <CardAgendamento
                   key={ag.id}
                   ag={ag}
+                  completo
                   acao={
                     <MediumActions
                       agendamentoId={ag.id}
@@ -137,6 +152,7 @@ export default async function MediumPage({ params }: Props) {
                 <CardAgendamento
                   key={ag.id}
                   ag={ag}
+                  completo={false}
                   acao={
                     <MediumActions
                       agendamentoId={ag.id}

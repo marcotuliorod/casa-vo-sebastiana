@@ -6,6 +6,7 @@ import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
 import { format, isBefore, startOfDay, addDays } from 'date-fns'
 import 'react-day-picker/style.css'
+import { DIAS_ANTECEDENCIA_AGENDAMENTO } from '@/lib/utils/date'
 
 const NOMES_DIAS: Record<number, string> = {
   0: 'dom', 1: 'seg', 2: 'ter', 3: 'qua', 4: 'qui', 5: 'sex', 6: 'sáb',
@@ -62,9 +63,9 @@ export function CalendarioAgendamento({ datasBlockeadas, diasComAtendimento, dat
             selected={dataSelecionada}
             onSelect={handleSelecionarData}
             locale={ptBR}
-            disabled={[ehDesabilitado, { before: hoje }, { after: addDays(hoje, 60) }]}
+            disabled={[ehDesabilitado, { before: hoje }, { after: addDays(hoje, DIAS_ANTECEDENCIA_AGENDAMENTO) }]}
             startMonth={hoje}
-            endMonth={addDays(hoje, 60)}
+            endMonth={addDays(hoje, DIAS_ANTECEDENCIA_AGENDAMENTO)}
             modifiersClassNames={{
               selected: '[&>button]:bg-brand [&>button]:text-white [&>button]:border-brand',
               today: 'font-bold',

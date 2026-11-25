@@ -7,6 +7,7 @@ vi.mock('@/lib/db', () => ({
   db: {
     insert: vi.fn(),
     update: vi.fn(),
+    transaction: vi.fn(),
     query: {
       agendamentos: { findFirst: vi.fn() },
     },
@@ -47,10 +48,13 @@ import { MENSAGEM_LIMITE, zerarLimites } from '@/lib/rate-limit'
 type MockDb = {
   insert: ReturnType<typeof vi.fn>
   update: ReturnType<typeof vi.fn>
+  transaction: ReturnType<typeof vi.fn>
   query: { agendamentos: { findFirst: ReturnType<typeof vi.fn> } }
 }
 const mockDb = db as unknown as MockDb
 const mockEnviarEmail = vi.mocked(enviarEmail)
+// tx.execute da inscrição em evento (trava de vagas)
+const mockTxExecute = vi.fn()
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -171,6 +175,11 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   mockDb.update.mockReturnValue(mkUpdateChain())
+  // A inscrição em evento roda numa transação: o tx usa o mesmo insert falso
+  mockTxExecute.mockResolvedValue([])
+  mockDb.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+    fn({ execute: mockTxExecute, insert: mockDb.insert })
+  )
   mockDb.query.agendamentos.findFirst.mockResolvedValue(agendamentoAtivo)
   // ehOcorrenciaValida (real) só aceita datas de hoje em diante: fixa "hoje" em 01/04/2025.
   // Só o Date é falsificado para não travar as promises.
@@ -277,6 +286,55 @@ describe('cancelarAgendamento — e-mail', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // criarAgendamento — e-mail obrigatório e confirmação
 // ─────────────────────────────────────────────────────────────────────────────
+describe('criarAgendamento — validação no servidor', () => {
+  // "Hoje" nos testes é 01/04/2025 às 08:00 (horário de Brasília)
+
+  it('recusa data que já passou', async () => {
+    const resultado = await criarAgendamento(null, formAgendamento({ data: '2025-03-31' }))
+
+    expect(resultado).toEqual({ erro: 'Esta data já passou. Por favor, escolha outra.' })
+    expect(mockDb.insert).not.toHaveBeenCalled()
+  })
+
+  it('recusa horário de hoje que já passou', async () => {
+    const resultado = await criarAgendamento(
+      null,
+      formAgendamento({ hora_inicio: '07:30', hora_fim: '08:00' })
+    )
+
+    expect(resultado).toEqual({ erro: 'Este horário já passou. Por favor, escolha outro.' })
+    expect(mockDb.insert).not.toHaveBeenCalled()
+  })
+
+  it('aceita o último dia aberto do calendário (hoje + 60) e recusa o seguinte', async () => {
+    capturarInserts()
+    mkEnvio()
+    vi.mocked(getSlotsDisponiveis).mockResolvedValue({
+      slots: [{ hora_inicio: '09:00', hora_fim: '10:00' }],
+    } as unknown as Awaited<ReturnType<typeof getSlotsDisponiveis>>)
+
+    expect(await criarAgendamento(null, formAgendamento({ data: '2025-05-31' }))).toBeUndefined()
+
+    vi.clearAllMocks()
+    const resultado = await criarAgendamento(null, formAgendamento({ data: '2025-06-01' }))
+    expect(resultado).toEqual({ erro: 'Esta data ainda não está aberta para agendamento.' })
+    expect(mockDb.insert).not.toHaveBeenCalled()
+  })
+
+  it('recusa telefone que não é brasileiro válido', async () => {
+    const resultado = await criarAgendamento(null, formAgendamento({ telefone: '123456789012345' }))
+
+    expect(resultado).toEqual({ erro: 'Telefone inválido', campo: 'telefone' })
+    expect(mockDb.insert).not.toHaveBeenCalled()
+  })
+
+  it('recusa nome longo demais', async () => {
+    const resultado = await criarAgendamento(null, formAgendamento({ nome: 'A'.repeat(121) }))
+
+    expect(resultado).toEqual({ erro: 'Nome muito longo', campo: 'nome' })
+  })
+})
+
 describe('criarAgendamento — e-mail', () => {
   it('exige e-mail', async () => {
     const resultado = await criarAgendamento(null, formAgendamento({ email: '' }))
@@ -382,8 +440,41 @@ describe('inscreverEmEvento', () => {
       const resultado = await inscreverEmEvento(null, formInscricao({ data: '2025-04-12' }))
 
       expect(resultado).toBeUndefined() // sucesso redireciona (redirect mockado)
-      expect(contarInscritosOcorrencia).toHaveBeenCalledWith(EVENTO_ID, '2025-04-12')
+      expect(contarInscritosOcorrencia).toHaveBeenCalledWith(EVENTO_ID, '2025-04-12', expect.anything())
       expect(mockDb.insert).toHaveBeenCalled()
+    })
+  })
+
+  describe('vagas', () => {
+    it('confere as vagas com trava, dentro da transação da inscrição', async () => {
+      capturarInserts()
+      mkEnvio()
+
+      await inscreverEmEvento(null, formInscricao())
+
+      expect(mockDb.transaction).toHaveBeenCalledTimes(1)
+      expect(mockTxExecute).toHaveBeenCalledTimes(1) // pg_advisory_xact_lock
+      expect(mockTxExecute.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(contarInscritosOcorrencia).mock.invocationCallOrder[0]
+      )
+    })
+
+    it('recusa quando o evento está lotado, sem gravar nada', async () => {
+      vi.mocked(contarInscritosOcorrencia).mockResolvedValue(evento.capacidade)
+
+      const resultado = await inscreverEmEvento(null, formInscricao())
+
+      expect(resultado).toEqual({ erro: 'Não há mais vagas disponíveis para esta data.' })
+      expect(mockDb.insert).not.toHaveBeenCalled()
+      expect(mockEnviarEmail).not.toHaveBeenCalled()
+    })
+
+    it('erro no banco durante a inscrição vira mensagem amigável', async () => {
+      mockDb.transaction.mockRejectedValue(new Error('conexão caiu'))
+
+      const resultado = await inscreverEmEvento(null, formInscricao())
+
+      expect(resultado).toEqual({ erro: 'Erro ao registrar inscrição. Tente novamente.' })
     })
   })
 

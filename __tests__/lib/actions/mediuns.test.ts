@@ -26,10 +26,13 @@ function mkSelectChain(resultado: unknown[] | Error) {
   return chain
 }
 
-function mkUpdateChain(erro?: Error) {
+// db.update(t).set(v).where(cond) — e .returning() depois do where (assumir).
+// `linhas` é o que o UPDATE afetou: [] simula que outro médium chegou antes.
+function mkUpdateChain(erro?: Error, linhas: unknown[] = [{ id: 'ag-1' }]) {
+  const resultado = () => (erro ? Promise.reject(erro) : Promise.resolve(linhas))
   return {
     set: vi.fn(() => ({
-      where: vi.fn(() => (erro ? Promise.reject(erro) : Promise.resolve([]))),
+      where: vi.fn(() => Object.assign(resultado(), { returning: vi.fn(resultado) })),
     })),
   }
 }
@@ -75,6 +78,15 @@ describe('assumirAgendamento', () => {
     mockDb.update.mockReturnValue(mkUpdateChain())
     const resultado = await assumirAgendamento('ag-1', 'token-valido')
     expect(resultado).toEqual({})
+  })
+
+  it('não sobrescreve quem assumiu primeiro (update não afeta nenhuma linha)', async () => {
+    mockDb.select
+      .mockReturnValueOnce({ from: vi.fn(() => mkSelectChain([MEDIUM_VALIDO])) })
+      .mockReturnValueOnce({ from: vi.fn(() => mkSelectChain([AG_SEM_MEDIUM])) })
+    mockDb.update.mockReturnValue(mkUpdateChain(undefined, []))
+    const resultado = await assumirAgendamento('ag-1', 'token-valido')
+    expect(resultado).toEqual({ erro: 'Este agendamento já foi assumido por outro médium.' })
   })
 
   it('retorna erro de DB na atualização', async () => {
