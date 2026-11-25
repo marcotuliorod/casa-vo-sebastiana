@@ -1,72 +1,71 @@
-# Deploy automático — configuração única
+# Atualização automática do site — configuração única
 
-Depois desta configuração, **todo merge no `main` com CI verde atualiza o site sozinho**
-(workflow `.github/workflows/deploy.yml`, que entra no servidor por SSH e roda
-`scripts/deploy.sh`). Enquanto ela não for feita, o workflow só mostra um aviso e não faz nada.
+Depois desta configuração, **o servidor se atualiza sozinho**: a cada 5 minutos ele confere se
+o `main` do GitHub tem uma versão nova com o CI verde e, se tiver, roda `scripts/deploy.sh`.
+Não precisa de chave, senha nem acesso de administrador ao GitHub — o repositório é público e o
+servidor só lê.
 
-Precisa ser feito uma vez, por quem tem acesso ao servidor e às configurações do repositório
-no GitHub. Leva uns 10 minutos.
+Precisa ser feito **uma vez**, por quem tem acesso ao servidor. Leva uns 5 minutos.
 
-## 1. No servidor: criar uma chave só para o deploy
+## Passo a passo
 
-Entre no servidor com o usuário que hoje roda o `docker compose` do projeto e execute:
-
-```bash
-ssh-keygen -t ed25519 -f ~/.ssh/github_deploy -N "" -C "github-actions-deploy"
-cat ~/.ssh/github_deploy.pub >> ~/.ssh/authorized_keys
-cat ~/.ssh/github_deploy
-```
-
-O último comando mostra a **chave privada** (de `-----BEGIN OPENSSH PRIVATE KEY-----` até
-`-----END OPENSSH PRIVATE KEY-----`). Copie tudo — ela vai no passo 3 e não deve ir para nenhum
-outro lugar. Depois, pode apagar o arquivo: `rm ~/.ssh/github_deploy`.
-
-Confira também, ainda no servidor:
+Entre no servidor (SSH) com o usuário que hoje roda o `docker compose` do projeto e execute,
+um de cada vez:
 
 ```bash
-cd ~/casa-vo-sebastiana          # pasta do projeto (ajuste se for outra)
-git fetch origin main            # precisa funcionar sem pedir senha
-docker compose ps                # precisa funcionar sem sudo
+cd ~/casa-vo-sebastiana
 ```
 
-## 2. No seu computador: a "impressão digital" do servidor
-
-Isso garante que o GitHub está falando com o servidor certo. Rode (troque pelo endereço real):
+(ajuste o caminho se o projeto estiver em outra pasta)
 
 ```bash
-ssh-keyscan -p 22 ENDERECO_DO_SERVIDOR
+git pull --ff-only
 ```
 
-Copie todas as linhas da saída.
+```bash
+./scripts/deploy.sh
+```
 
-## 3. No GitHub: cadastrar os segredos
+Este primeiro deploy já coloca no ar tudo o que estava pendente. Ele reconstrói as imagens,
+aplica as migrations e sobe a nova versão — leva alguns minutos e termina com
+`Deploy concluído`.
 
-No repositório: **Settings → Secrets and variables → Actions → New repository secret**.
-Cadastre um por um:
+```bash
+./scripts/instalar-auto-deploy.sh
+```
 
-| Nome | Valor |
-|------|-------|
-| `DEPLOY_HOST` | Endereço do servidor (IP ou domínio) |
-| `DEPLOY_USER` | Usuário do passo 1 |
-| `DEPLOY_SSH_KEY` | Chave privada copiada no passo 1 |
-| `DEPLOY_KNOWN_HOSTS` | Linhas copiadas no passo 2 |
-| `DEPLOY_PATH` | *(opcional)* Pasta do projeto no servidor. Padrão: `casa-vo-sebastiana` (dentro da home) |
-| `DEPLOY_PORT` | *(opcional)* Porta do SSH. Padrão: `22` |
+Pronto. A partir daqui, cada mudança aprovada no GitHub entra no ar em até ~5 minutos depois
+que o CI termina.
 
-## 4. Testar
+## Como acompanhar
 
-No repositório: **Actions → Deploy → Run workflow**. Em alguns minutos o job deve terminar
-verde com a mensagem `Deploy concluído` no final do log.
+O histórico das atualizações fica em `~/casa-vo-sebastiana-deploy.log`:
 
-## O que o deploy faz
+```bash
+tail -n 50 ~/casa-vo-sebastiana-deploy.log
+```
 
-`scripts/deploy.sh`, dentro da pasta do projeto no servidor:
+## O que acontece em cada caso
 
-1. baixa o `main` mais recente (só avança; se houver mudança local, para com erro);
-2. reconstrói as imagens;
-3. aplica as migrations do banco;
-4. sobe a nova versão e espera o app responder no healthcheck;
-5. apaga imagens antigas.
+| Situação no GitHub | O que o servidor faz |
+|--------------------|----------------------|
+| Nada novo no `main` | Nada |
+| Versão nova, CI ainda rodando | Espera a próxima verificação |
+| Versão nova, CI falhou | Não atualiza (anota no log) |
+| Versão nova, CI verde | Roda `scripts/deploy.sh` |
 
-Se algum passo falhar, o script para ali e o site continua na versão anterior — o GitHub
-mostra o job em vermelho. O mesmo script pode ser rodado à mão: `./scripts/deploy.sh`.
+`scripts/deploy.sh` baixa o `main` (só avança; se houver mudança local na pasta do servidor,
+para com erro), reconstrói as imagens, aplica as migrations **antes** de trocar o app, sobe a
+nova versão esperando o healthcheck e apaga imagens antigas. Se algum passo falhar, para ali e
+o site continua na versão anterior.
+
+## Requisitos no servidor
+
+`git`, `docker`, `curl`, `flock` e `crontab` (o instalador confere e avisa se faltar algum).
+O usuário precisa conseguir rodar `git fetch` e `docker compose` sem senha nem `sudo`.
+
+## Desligar
+
+```bash
+crontab -l | grep -v 'scripts/auto-deploy.sh' | crontab -
+```
