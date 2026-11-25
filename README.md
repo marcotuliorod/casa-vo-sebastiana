@@ -31,6 +31,7 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
   3. Preencher dados — nome, telefone, e-mail (obrigatório — é o canal de contato), observações
 - **Página do agendamento** acessível por link público via token (sem login)
 - **Auto-cancelamento** via link público
+- **Privacidade** (`/privacidade`) — o que é coletado, para quê, com quem é compartilhado e como pedir acesso, correção ou exclusão (LGPD). O contato exibido é o `EMAIL_REPLY_TO`
 - **Meus Agendamentos** (`/historico`) — o consulente informa o e-mail e recebe um link de acesso válido por 1 hora (ver "Histórico do consulente")
 
 ### Painel Admin (protegido por login)
@@ -39,7 +40,7 @@ Sistema web completo de agendamento espiritual para o terreiro **Casa de Vó Seb
 - Gerenciamento de disponibilidade:
   - Ativar/desativar slots da grade semanal
   - Bloquear datas ou horários específicos
-- Lista de consulentes (clientes)
+- Lista de consulentes (clientes) — excluir um consulente apaga também todo o histórico de agendamentos (pedido de exclusão de dados, LGPD); só é bloqueado se houver agendamento pendente ou confirmado
 
 ### Comunicação por e-mail
 - **Confirmação** — enviada ao consulente ao criar um agendamento ou inscrição em evento
@@ -280,6 +281,7 @@ Diferente do Supabase, este Postgres não usa Row Level Security. Toda autoriza�
 | `/agendamento/[token]` | Server Component | Detalhe público (sem login) |
 | `/agendamento/[token]/cancelar` | Client Component | Confirmação de cancelamento |
 | `/historico` | Server Component | Histórico do consulente — pede o link por e-mail ou mostra os agendamentos se o acesso for válido |
+| `/privacidade` | Server Component | Política de privacidade (LGPD) |
 | `/historico/acesso` | Route Handler | Destino do link do e-mail: valida o token, grava o cookie e redireciona |
 | `/mediuns/[token]` | Server Component | Área do médium (assumir/liberar agendamentos, mural de recados) |
 | `/auth/login` | Client Component | Login admin (magic link via Auth.js) |

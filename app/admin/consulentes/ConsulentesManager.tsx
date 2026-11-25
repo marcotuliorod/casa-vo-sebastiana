@@ -111,7 +111,7 @@ function LinhaConsulente({ cliente }: { cliente: ClienteComContagem }) {
             {/* Excluir */}
             {confirmandoExcluir ? (
               <div className="flex items-center gap-1 ml-1">
-                <span className="text-xs text-gray-500 whitespace-nowrap">Excluir?</span>
+                <span className="text-xs text-gray-500 whitespace-nowrap">Excluir com todo o histórico?</span>
                 <button
                   onClick={handleExcluir}
                   className="text-xs font-medium text-red-600 hover:text-red-800 px-1"

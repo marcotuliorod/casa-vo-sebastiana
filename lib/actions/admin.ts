@@ -623,13 +623,20 @@ export async function excluirCliente(id: string): Promise<{ erro?: string }> {
     return { erro: `Não é possível excluir: há ${totalAtivos} agendamento(s) ativo(s) para este consulente.` }
   }
 
+  // Apaga o consulente com todo o histórico (pedido de exclusão de dados, LGPD).
+  // agendamentos.cliente_id é ON DELETE RESTRICT, então o histórico sai antes;
+  // logs_email cai junto (cascade) e itens da email_queue ficam sem vínculo.
   try {
-    await db.delete(clientes).where(eq(clientes.id, id))
+    await db.transaction(async (tx) => {
+      await tx.delete(agendamentos).where(eq(agendamentos.clienteId, id))
+      await tx.delete(clientes).where(eq(clientes.id, id))
+    })
   } catch (erro) {
     return { erro: mensagemErro(erro) }
   }
 
   revalidatePath('/admin/consulentes')
+  revalidatePath('/admin/agendamentos')
   return {}
 }
 
