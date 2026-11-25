@@ -53,7 +53,10 @@ export default function Home() {
       </main>
 
       <footer className="py-6 text-center text-xs text-gray-400">
-        Casa de Vó Sebastiana · Umbanda
+        Casa de Vó Sebastiana · Umbanda ·{' '}
+        <Link href="/privacidade" className="hover:text-gray-600 hover:underline">
+          Privacidade
+        </Link>
       </footer>
     </div>
   )

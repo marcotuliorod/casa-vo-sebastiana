@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useActionState } from 'react'
 import { FormSemReset, useFormPending } from '@/components/shared/FormSemReset'
 import { inscreverEmEvento, type EstadoFormAgendamento } from '@/lib/actions/booking'
@@ -154,7 +155,10 @@ export function EventoInscricaoForm({
           required
         />
         <p className="text-xs text-gray-400">
-          Você receberá a confirmação por e-mail
+          Você receberá a confirmação por e-mail ·{' '}
+          <Link href="/privacidade" target="_blank" className="underline hover:text-gray-600">
+            Como usamos seus dados
+          </Link>
         </p>
         {estado?.campo === 'email' && (
           <p className="text-xs text-brand-error">{estado.erro}</p>

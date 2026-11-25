@@ -3,8 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 // ─── Mocks globais ─────────────────────────────────────────────────────────────
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
-vi.mock('@/lib/db', () => ({
-  db: {
+vi.mock('@/lib/db', () => {
+  const db: Record<string, unknown> = {
     select: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
@@ -13,8 +13,11 @@ vi.mock('@/lib/db', () => ({
       agendamentos: { findFirst: vi.fn() },
       mediuns: { findFirst: vi.fn() },
     },
-  },
-}))
+  }
+  // A transação recebe o próprio mock como `tx`
+  db.transaction = vi.fn((cb: (tx: unknown) => unknown) => cb(db))
+  return { db }
+})
 vi.mock('@/lib/auth/config', () => ({
   auth: vi.fn(),
 }))
@@ -32,7 +35,7 @@ import { db } from '@/lib/db'
 import { auth } from '@/lib/auth/config'
 import { enviarEmail } from '@/lib/email/cliente'
 import { emailAtribuicaoMedium } from '@/lib/email/templates'
-import { emailQueue, logsEmail, mediuns } from '@/lib/db/schema'
+import { agendamentos, clientes, emailQueue, logsEmail, mediuns } from '@/lib/db/schema'
 import {
   atualizarStatusAgendamento,
   bloquearData,
@@ -876,11 +879,13 @@ describe('excluirCliente', () => {
     expect(resultado.erro).toMatch(/2 agendamento/)
   })
 
-  it('exclui cliente sem agendamentos ativos', async () => {
+  it('exclui cliente sem agendamentos ativos, apagando antes o histórico', async () => {
     mockDb.select.mockReturnValue(mkCountChain(0))
     mockDb.delete.mockReturnValue(mkDeleteChain())
     const resultado = await excluirCliente('cli-1')
     expect(resultado).toEqual({})
+    // agendamentos.cliente_id é RESTRICT: o histórico precisa sair antes do cliente
+    expect(mockDb.delete.mock.calls.map(([t]) => t)).toEqual([agendamentos, clientes])
   })
 
   it('retorna erro de DB na exclusão', async () => {
