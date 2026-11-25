@@ -64,6 +64,17 @@ o site continua na versão anterior.
 `git`, `docker`, `curl`, `flock` e `crontab` (o instalador confere e avisa se faltar algum).
 O usuário precisa conseguir rodar `git fetch` e `docker compose` sem senha nem `sudo`.
 
+## Conferir depois de uma atualização
+
+Quando o log mostrar `Deploy concluído`, confirme que o site está no ar e que o cabeçalho de
+segurança continua sendo aplicado:
+
+```bash
+curl -sI https://agenda.mtrm.tech | grep -iE '^(HTTP|content-security-policy)'
+```
+
+Deve aparecer `HTTP/2 200` e `content-security-policy` (sem o sufixo `-report-only`).
+
 ## Desligar
 
 ```bash
