@@ -58,6 +58,11 @@ Só existe **uma** versão anterior guardada (a do deploy imediatamente anterior
 Os backups diários ficam no volume `backup_data` (15 dias) e são copiados para o Google Drive
 às 04:00 (horário de Brasília). Detalhes no [README](../README.md#5-backups).
 
+**Último ensaio de restauração:** 25/11/2026, com o dump `backup_20261125_162741.dump`,
+restaurado num banco temporário pelo comando do passo 2. As contagens de agendamentos, clientes,
+grade, médiuns e eventos bateram com produção. Repita o ensaio de tempos em tempos (a cada poucos
+meses) e atualize esta linha.
+
 Antes de restaurar, **pause o deploy automático**, para uma atualização não reiniciar o app no
 meio da restauração:
 
@@ -155,7 +160,32 @@ O servidor manda e-mail para `ADMIN_EMAIL_NOTIFICACOES` quando:
 
 - um deploy falha (com o motivo);
 - o CI do `main` falha;
-- o site é voltado para a versão anterior.
+- o site é voltado para a versão anterior;
+- o monitor (a cada 15 minutos) encontra um problema: site fora do ar, banco sem responder,
+  container parado ou disco acima de 90%. Chega um e-mail quando o problema começa e outro
+  quando ele é resolvido;
+- todo dia às 08:00 (Brasília): **resumo diário** com a versão no ar, os backups (no servidor e
+  no Google Drive), o uso do disco, e-mails que falharam e agendamentos novos. Quando algo
+  precisa de atenção, o assunto começa com "ATENÇÃO".
+
+Os alertas não pegam uma queda do servidor inteiro (se a VPS desligar, ela não consegue
+avisar). Nesse caso o sinal é **não chegar** o resumo diário.
+
+Histórico do monitor:
+
+```bash
+tail -n 30 ~/casa-vo-sebastiana-saude.log
+```
+
+Rodar o monitor ou o resumo na hora:
+
+```bash
+./scripts/saude.sh verificar
+```
+
+```bash
+./scripts/saude.sh resumo
+```
 
 Para testar o envio:
 

@@ -31,6 +31,8 @@ export function listaDeEmails(valor: string | null | undefined): string[] {
     .filter(Boolean)
 }
 
+export const TIMEOUT_RESEND_MS = 8000
+
 /**
  * Envia um e-mail. Lança se o envio não estiver configurado (sem chave ou remetente);
  * falhas da API voltam como { sucesso: false }.
@@ -47,8 +49,10 @@ export async function enviarEmail(
 
   const replyTo = process.env.EMAIL_REPLY_TO || undefined
 
+  // Sem limite, um Resend lento prende o formulário do consulente; o erro cai na fila de reenvio.
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
+    signal: AbortSignal.timeout(TIMEOUT_RESEND_MS),
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',

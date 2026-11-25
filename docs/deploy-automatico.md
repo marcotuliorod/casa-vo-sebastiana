@@ -35,7 +35,8 @@ aplica as migrations e sobe a nova versão — leva alguns minutos e termina com
 ```
 
 Pronto. A partir daqui, cada mudança aprovada no GitHub entra no ar em até ~5 minutos depois
-que o CI termina.
+que o CI termina. O mesmo instalador agenda o monitor de saúde (a cada 15 minutos) e o resumo
+diário por e-mail; ver [operacao.md](operacao.md#alertas-por-e-mail).
 
 ## Como acompanhar
 

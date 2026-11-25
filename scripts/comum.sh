@@ -20,9 +20,23 @@ ler_env() {
   printf '%s' "$valor"
 }
 
-# Nome da imagem do app gerada pelo Compose (ex.: casa-vo-sebastiana-app)
+# Nome da imagem do app gerada pelo Compose (ex.: casa-vo-sebastiana-app).
+# Lido da configuração em JSON: `config --images app` também lista as dependências, em ordem variável.
 imagem_app() {
-  (cd "$PASTA_PROJETO" && docker compose config --images app 2>/dev/null | head -n 1)
+  (cd "$PASTA_PROJETO" && docker compose config --format json 2>/dev/null) | python3 -I -c '
+import json, sys
+d = json.load(sys.stdin)
+print(d["services"]["app"].get("image") or (d["name"] + "-app"))
+' 2>/dev/null
+}
+
+# Mantém um log com as últimas 2000 linhas. Reescreve no mesmo arquivo (o cron o abre em modo
+# append), então a escrita em andamento continua no lugar certo.
+aparar_log() {
+  local log="$1"
+  [ -f "$log" ] || return 0
+  [ "$(wc -l < "$log")" -gt 2500 ] || return 0
+  tail -n 2000 "$log" > "$log.tmp" && cat "$log.tmp" > "$log" && rm -f "$log.tmp"
 }
 
 agora() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
