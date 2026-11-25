@@ -20,7 +20,7 @@ describe('TimeSlotGrid', () => {
   describe('quando slots=[] (sem horários disponíveis)', () => {
     it('renderiza mensagem de sem horários', () => {
       render(<TimeSlotGrid slots={[]} data="2025-03-25" />)
-      expect(screen.getByText(/não há horários disponíveis/i)).toBeInTheDocument()
+      expect(screen.getByText(/não há horários livres/i)).toBeInTheDocument()
     })
 
     it('exibe link para voltar ao calendário', () => {
@@ -70,7 +70,7 @@ describe('TimeSlotGrid', () => {
 
     it('não exibe mensagem de "sem horários"', () => {
       render(<TimeSlotGrid slots={SLOTS} data="2025-03-25" />)
-      expect(screen.queryByText(/não há horários disponíveis/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/não há horários livres/i)).not.toBeInTheDocument()
     })
   })
 

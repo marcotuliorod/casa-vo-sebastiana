@@ -10,7 +10,7 @@ import { getAgendamentoPorToken } from '@/lib/queries/appointments'
 import { getMediumNome } from '@/lib/queries/mediuns'
 import { getInfoCasa } from '@/lib/queries/casa'
 import { InfoCasaBloco } from '@/components/shared/InfoCasaBloco'
-import { formatarDataExtenso } from '@/lib/utils/date'
+import { formatarDataExtensoTitulo } from '@/lib/utils/date'
 import { formatarTelefone } from '@/lib/utils/phone'
 import { Calendar, Clock, User, Phone, CheckCircle2, Sparkles } from 'lucide-react'
 
@@ -84,7 +84,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
 
               <div className="flex items-center gap-3 text-gray-600">
                 <Calendar className="h-4 w-4 text-brand-muted flex-shrink-0" />
-                <span className="capitalize">{formatarDataExtenso(agendamento.data_agendada)}</span>
+                <span>{formatarDataExtensoTitulo(agendamento.data_agendada)}</span>
               </div>
 
               <div className="flex items-center gap-3 text-gray-600">
@@ -160,7 +160,7 @@ export default async function AgendamentoPage({ params, searchParams }: Props) {
 
         {/* Link de volta à home sempre visível */}
         <div className="mt-3 text-center">
-          <Link href="/" className="text-xs text-gray-400 hover:text-brand hover:underline transition-colors">
+          <Link href="/" className="text-xs text-gray-500 hover:text-brand hover:underline transition-colors">
             ← Página inicial
           </Link>
         </div>

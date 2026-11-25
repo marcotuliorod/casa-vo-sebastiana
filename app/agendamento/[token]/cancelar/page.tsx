@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { use, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Logo } from '@/components/shared/Logo'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cancelarAgendamento } from '@/lib/actions/booking'
+import { RodapePublico } from '@/components/shared/RodapePublico'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 
 interface Props {
@@ -14,13 +15,13 @@ interface Props {
 }
 
 export default function CancelarPage({ params }: Props) {
+  const { token } = use(params)
   const router = useRouter()
   const [erro, setErro] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const [cancelado, setCancelado] = useState(false)
 
-  const handleCancelar = async () => {
-    const { token } = await params
+  const handleCancelar = () => {
     startTransition(async () => {
       const resultado = await cancelarAgendamento(token)
       if (resultado.erro) {
@@ -61,7 +62,7 @@ export default function CancelarPage({ params }: Props) {
                 </p>
 
                 {erro && (
-                  <div className="rounded-lg bg-brand-error/10 border border-brand-error/30 p-3 text-sm text-brand-error">
+                  <div role="alert" className="rounded-lg bg-brand-error/10 border border-brand-error/30 p-3 text-sm text-brand-error">
                     {erro}
                   </div>
                 )}
@@ -69,15 +70,17 @@ export default function CancelarPage({ params }: Props) {
                 <div className="flex gap-3 pt-2">
                   <Button
                     variant="outline"
-                    className="flex-1"
+                    size="lg"
+                    className="flex-1 px-4"
                     disabled={isPending}
                     asChild
                   >
-                    <Link href="..">Voltar</Link>
+                    <Link href={`/agendamento/${token}`}>Voltar</Link>
                   </Button>
                   <Button
                     variant="destructive"
-                    className="flex-1"
+                    size="lg"
+                    className="flex-1 px-4"
                     onClick={handleCancelar}
                     disabled={isPending}
                   >
@@ -95,6 +98,7 @@ export default function CancelarPage({ params }: Props) {
             )}
           </CardContent>
         </Card>
+        <RodapePublico className="mt-2" />
       </div>
     </div>
   )

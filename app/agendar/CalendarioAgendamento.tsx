@@ -6,10 +6,10 @@ import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
 import { format, isBefore, startOfDay, addDays } from 'date-fns'
 import 'react-day-picker/style.css'
-import { DIAS_ANTECEDENCIA_AGENDAMENTO } from '@/lib/utils/date'
+import { DIAS_ANTECEDENCIA_AGENDAMENTO, primeiraMaiuscula } from '@/lib/utils/date'
 
 const NOMES_DIAS: Record<number, string> = {
-  0: 'dom', 1: 'seg', 2: 'ter', 3: 'qua', 4: 'qui', 5: 'sex', 6: 'sáb',
+  0: 'domingo', 1: 'segunda', 2: 'terça', 3: 'quarta', 4: 'quinta', 5: 'sexta', 6: 'sábado',
 }
 
 interface CalendarioProps {
@@ -49,12 +49,15 @@ export function CalendarioAgendamento({ datasBlockeadas, diasComAtendimento, dat
           className="[&_.rdp-caption_label]:capitalize [&_.rdp-day_button:not(:disabled):hover]:bg-brand-light"
           style={
             {
-              '--rdp-accent-color': '#4A86C8', // brand
+              '--rdp-accent-color': '#2D69AA', // brand
               '--rdp-accent-background-color': '#EEF5FB', // brand-light
-              '--rdp-today-color': '#4A86C8',
-              '--rdp-day-height': '2.25rem',
-              '--rdp-day-width': '2.25rem',
-              '--rdp-disabled-opacity': '0.3',
+              '--rdp-today-color': '#1A4A7C', // brand-dark
+              // 44px: alvo de toque confortável no celular (7 colunas cabem em 320px)
+              '--rdp-day-height': '2.75rem',
+              '--rdp-day-width': '2.75rem',
+              '--rdp-day_button-height': '2.625rem',
+              '--rdp-day_button-width': '2.625rem',
+              '--rdp-disabled-opacity': '0.35',
             } as React.CSSProperties
           }
         >
@@ -66,8 +69,10 @@ export function CalendarioAgendamento({ datasBlockeadas, diasComAtendimento, dat
             disabled={[ehDesabilitado, { before: hoje }, { after: addDays(hoje, DIAS_ANTECEDENCIA_AGENDAMENTO) }]}
             startMonth={hoje}
             endMonth={addDays(hoje, DIAS_ANTECEDENCIA_AGENDAMENTO)}
+            modifiers={{ livre: (data: Date) => !ehDesabilitado(data) }}
             modifiersClassNames={{
-              selected: '[&>button]:bg-brand [&>button]:text-white [&>button]:border-brand',
+              livre: '[&>button]:bg-brand-light [&>button]:font-semibold [&>button]:text-brand-dark',
+              selected: '[&>button]:!bg-brand [&>button]:!text-white [&>button]:border-brand',
               today: 'font-bold',
             }}
           />
@@ -77,25 +82,28 @@ export function CalendarioAgendamento({ datasBlockeadas, diasComAtendimento, dat
       {dataSelecionada && (
         <div className="mt-4">
           <p className="text-center text-sm text-brand font-medium">
-            📅 {format(dataSelecionada, "EEEE, d 'de' MMMM", { locale: ptBR })}
+            📅 {primeiraMaiuscula(format(dataSelecionada, "EEEE, d 'de' MMMM", { locale: ptBR }))}
           </p>
-          <p className="text-center text-xs text-gray-400 mt-1">Carregando horários...</p>
+          <p className="text-center text-xs text-gray-500 mt-1">Carregando horários...</p>
         </div>
       )}
 
-      <div className="mt-4 flex items-center justify-center gap-4 text-xs text-gray-400">
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-full bg-brand" />
-          disponível
+      <div className="mt-4 flex items-center justify-center gap-4 text-xs text-gray-600">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-4 w-4 rounded bg-brand-light border border-brand-muted" aria-hidden="true" />
+          com horário livre
         </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-full border border-gray-300" />
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-4 w-4 rounded border border-gray-200 opacity-50" aria-hidden="true" />
           sem horário
         </span>
       </div>
-      <p className="mt-2 text-center text-xs text-gray-400">
-        Atendimentos: {diasComAtendimento.sort((a, b) => a - b).map((d) => NOMES_DIAS[d]).join(', ')}
-      </p>
+      {diasComAtendimento.length > 0 && (
+        <p className="mt-2 text-center text-xs text-gray-600">
+          Dias de atendimento:{' '}
+          {[...diasComAtendimento].sort((a, b) => a - b).map((d) => NOMES_DIAS[d]).join(', ')}
+        </p>
+      )}
     </div>
   )
 }

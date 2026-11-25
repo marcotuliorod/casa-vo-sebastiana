@@ -10,7 +10,7 @@ import { getContagensPorDia } from '@/lib/queries/calendario'
 import { Calendar, AlertCircle, Clock, TrendingUp } from 'lucide-react'
 
 export const metadata = {
-  title: 'Dashboard | Admin — Casa de Vó Sebastiana',
+  title: 'Dashboard',
 }
 
 export default async function AdminDashboard() {

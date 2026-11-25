@@ -3,7 +3,7 @@ import { getOcorrenciasEvento } from '@/lib/queries/eventos'
 import { EventosManager } from './EventosManager'
 import type { OcorrenciaEvento, RecorrenciaTipo } from '@/types/database'
 
-export const metadata = { title: 'Eventos — Admin' }
+export const metadata = { title: 'Eventos' }
 
 export default async function EventosPage() {
   const eventos = await listarEventos()

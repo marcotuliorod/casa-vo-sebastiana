@@ -4,7 +4,7 @@ import { getMediumPorToken, getAgendamentosDoMedium, getAgendamentosDisponiveisM
 import { listarRecados } from '@/lib/queries/recados'
 import { MediumActions } from './MediumActions'
 import { MuralRecados } from './MuralRecados'
-import { formatarDataExtenso } from '@/lib/utils/date'
+import { formatarDataExtensoTitulo } from '@/lib/utils/date'
 import { formatarTelefone } from '@/lib/utils/phone'
 import type { AgendamentoComCliente } from '@/types/database'
 
@@ -32,8 +32,8 @@ function CardAgendamento({
   return (
     <div className="bg-white rounded-xl border p-4 flex items-start justify-between gap-4">
       <div className="space-y-1">
-        <p className="font-semibold text-gray-900 capitalize">
-          {formatarDataExtenso(ag.data_agendada)}
+        <p className="font-semibold text-gray-900">
+          {formatarDataExtensoTitulo(ag.data_agendada)}
         </p>
         <p className="text-sm text-purple-700 font-medium">
           {ag.hora_inicio.slice(0, 5)} — {ag.hora_fim.slice(0, 5)}

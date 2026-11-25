@@ -6,9 +6,11 @@ import { CalendarioAgendamento } from './CalendarioAgendamento'
 import { getDatasBlockeadas, getDiasAtivos, getDatasComSlotsDisponiveis } from '@/lib/queries/availability'
 import { formatInTimeZone } from 'date-fns-tz'
 import { DIAS_ANTECEDENCIA_AGENDAMENTO } from '@/lib/utils/date'
+import { getInfoCasa } from '@/lib/queries/casa'
+import { InfoCasaBloco } from '@/components/shared/InfoCasaBloco'
 
 export const metadata = {
-  title: 'Agendar — Escolha a data | Casa de Vó Sebastiana',
+  title: 'Agendar: escolha a data',
 }
 
 // Disponibilidade muda a cada agendamento — nunca prerenderizar estaticamente
@@ -24,10 +26,11 @@ export default async function AgendarPage() {
     datasProximas.push(formatInTimeZone(d, 'America/Sao_Paulo', 'yyyy-MM-dd'))
   }
 
-  const [datasBlockeadas, diasAtivos, datasComSlots] = await Promise.all([
+  const [datasBlockeadas, diasAtivos, datasComSlots, infoCasa] = await Promise.all([
     getDatasBlockeadas(),
     getDiasAtivos(),
     getDatasComSlotsDisponiveis(datasProximas),
+    getInfoCasa(),
   ])
 
   return (
@@ -42,12 +45,12 @@ export default async function AgendarPage() {
           <p className="font-semibold text-gray-800 text-sm">Participar de um evento</p>
           <p className="text-xs text-gray-500">Ver eventos abertos para inscrição</p>
         </div>
-        <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
+        <ChevronRight className="h-4 w-4 text-gray-500 flex-shrink-0" />
       </Link>
 
       <ProgressSteps passoAtual={1} />
 
-      <div className="rounded-2xl bg-white p-6 shadow-sm border">
+      <div className="rounded-2xl bg-white p-4 sm:p-6 shadow-sm border">
         <h2 className="text-xl font-serif font-semibold text-brand-dark mb-1">
           Escolha uma data
         </h2>
@@ -55,11 +58,22 @@ export default async function AgendarPage() {
           Selecione o dia em que deseja ser atendido(a).
         </p>
 
-        <CalendarioAgendamento
-          datasBlockeadas={datasBlockeadas}
-          diasComAtendimento={diasAtivos}
-          datasComSlots={datasComSlots}
-        />
+        {datasComSlots.length === 0 ? (
+          <div role="status" className="rounded-xl bg-brand-areia/40 border border-brand-muted/30 p-4 text-sm text-gray-700 space-y-2">
+            <p className="font-semibold text-brand-dark">No momento não há horários livres.</p>
+            <p>
+              Todos os horários dos próximos {DIAS_ANTECEDENCIA_AGENDAMENTO} dias estão ocupados ou ainda não
+              foram abertos. Volte em breve ou veja os eventos abertos.
+            </p>
+            <InfoCasaBloco info={infoCasa} className="mt-3" />
+          </div>
+        ) : (
+          <CalendarioAgendamento
+            datasBlockeadas={datasBlockeadas}
+            diasComAtendimento={diasAtivos}
+            datasComSlots={datasComSlots}
+          />
+        )}
       </div>
     </div>
   )

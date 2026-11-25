@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { ProgressSteps } from '@/components/booking/ProgressSteps'
 import { TimeSlotGrid } from '@/components/booking/TimeSlotGrid'
 import { getSlotsDisponiveis } from '@/lib/queries/availability'
-import { formatarDataExtenso, ehDataPassada } from '@/lib/utils/date'
+import { formatarDataExtenso, formatarDataExtensoTitulo, ehDataPassada } from '@/lib/utils/date'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft } from 'lucide-react'
 
@@ -15,7 +15,7 @@ interface Props {
 export async function generateMetadata({ params }: Props) {
   const { data } = await params
   return {
-    title: `Horários em ${formatarDataExtenso(data)} | Casa de Vó Sebastiana`,
+    title: `Horários de ${formatarDataExtenso(data)}`,
   }
 }
 
@@ -60,12 +60,17 @@ export default async function HorariosPage({ params }: Props) {
         <h2 className="text-xl font-serif font-semibold text-brand-dark mb-1">
           Escolha um horário
         </h2>
-        <p className="text-sm text-gray-500 mb-6 capitalize">
-          📅 {formatarDataExtenso(data)}
+        <p className="text-sm text-gray-500 mb-6">
+          📅 {formatarDataExtensoTitulo(data)}
         </p>
 
         {erro ? (
-          <div className="text-center py-8 text-brand-error text-sm">{erro}</div>
+          <div role="alert" className="text-center py-8 text-sm text-gray-700 space-y-3">
+            <p>Não foi possível carregar os horários agora. Tente de novo em alguns instantes.</p>
+            <Link href={`/agendar/${data}`} className="inline-block py-2 text-brand-dark underline underline-offset-2">
+              Tentar de novo
+            </Link>
+          </div>
         ) : (
           <TimeSlotGrid slots={slots} data={data} />
         )}

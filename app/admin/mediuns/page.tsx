@@ -3,7 +3,7 @@ import { listarMediuns } from '@/lib/queries/mediuns'
 import { MediunsManager } from './MediunsManager'
 
 export const metadata = {
-  title: 'Médiuns | Admin — Casa de Vó Sebastiana',
+  title: 'Médiuns',
 }
 
 export default async function MediunsPage() {

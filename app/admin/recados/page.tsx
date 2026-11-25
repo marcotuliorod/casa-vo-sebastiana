@@ -4,7 +4,7 @@ import { listarRecados } from '@/lib/queries/recados'
 import { RecadosManager } from './RecadosManager'
 
 export const metadata = {
-  title: 'Mural de Recados | Admin — Casa de Vó Sebastiana',
+  title: 'Mural de Recados',
 }
 
 export default async function RecadosPage() {

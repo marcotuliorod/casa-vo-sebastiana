@@ -11,11 +11,12 @@ import { getHistoricoPorEmail } from '@/lib/queries/appointments'
 import { getMediunsNomesMap } from '@/lib/queries/mediuns'
 import { sairDoHistorico } from '@/lib/actions/historico'
 import { COOKIE_HISTORICO, verificarTokenHistorico } from '@/lib/historico/token'
-import { formatarDataExtenso } from '@/lib/utils/date'
+import { formatarDataExtensoTitulo } from '@/lib/utils/date'
 import { Calendar, Clock, Sparkles } from 'lucide-react'
 
 export const metadata = {
-  title: 'Meus Agendamentos | Casa de Vó Sebastiana',
+  title: 'Meus agendamentos',
+  robots: { index: false, follow: false },
 }
 
 interface Props {
@@ -76,7 +77,7 @@ export default async function HistoricoPage({ searchParams }: Props) {
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs text-gray-400 text-right">
+            <p className="text-xs text-gray-500 text-right">
               {agendamentos.length} agendamento{agendamentos.length !== 1 ? 's' : ''} encontrado{agendamentos.length !== 1 ? 's' : ''}
             </p>
             {agendamentos.map((ag) => (
@@ -89,8 +90,8 @@ export default async function HistoricoPage({ searchParams }: Props) {
                   <div className="space-y-1.5 flex-1">
                     <div className="flex items-center gap-2 text-sm text-gray-700">
                       <Calendar className="h-3.5 w-3.5 text-brand-muted flex-shrink-0" />
-                      <span className="capitalize font-medium">
-                        {formatarDataExtenso(ag.data_agendada)}
+                      <span className="font-medium">
+                        {formatarDataExtensoTitulo(ag.data_agendada)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -98,7 +99,7 @@ export default async function HistoricoPage({ searchParams }: Props) {
                       <span>{ag.hora_inicio.slice(0, 5)} — {ag.hora_fim.slice(0, 5)}</span>
                     </div>
                     {ag.medium_id && (
-                      <div className="flex items-center gap-2 text-xs text-gray-400">
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
                         <Sparkles className="h-3 w-3 text-brand-gold flex-shrink-0" />
                         <span>Com: {mediumNomes[ag.medium_id] ?? 'Médium'}</span>
                       </div>
